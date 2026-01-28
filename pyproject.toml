@@ -23,4 +23,4 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/allenhark/slipstream-sdk-python"
+Repository = "https://github.com/AllenHark-Inc/slipstream-sdk-python"
