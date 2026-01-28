@@ -33,3 +33,7 @@ async def main():
 - **Python 3.9+** - Modern Python
 
 ## Documentation
+
+## Governance & Support
+
+This SDK is community supported. Enterprise support is available at [allenhark.com](https://allenhark.com).
