@@ -33,4 +33,3 @@ async def main():
 - **Python 3.9+** - Modern Python
 
 ## Documentation
-
