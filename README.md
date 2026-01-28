@@ -34,4 +34,3 @@ async def main():
 
 ## Documentation
 
-See [Architecture Doc](../../slipstream_arch.md) Section 9.
