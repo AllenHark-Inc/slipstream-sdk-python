@@ -1,6 +1,6 @@
 # AllenHarkSlipstream
 
-Python SDK for Slipstream - Solana transaction relay.
+Python SDK for Slipstream - Solana transaction relay. 
 
 ## Installation
 
