@@ -36,6 +36,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from .config import get_http_endpoint, get_ws_endpoint
+from .discovery import discover, best_region, workers_for_region
 from .errors import SlipstreamError
 from .http_transport import HttpTransport
 from .types import (
@@ -152,9 +153,46 @@ class SlipstreamClient:
     async def connect(config: SlipstreamConfig) -> SlipstreamClient:
         """Connect to Slipstream.
 
-        Establishes a WebSocket connection for streaming and prepares
-        the HTTP transport for REST API calls.
+        If no explicit endpoint is set, the SDK automatically discovers
+        available workers via the discovery service, selects the best
+        worker, and connects directly to its IP address.
         """
+        # If no explicit endpoint, use discovery to find a worker
+        if not config.endpoint:
+            response = await discover(config.discovery_url)
+            region = best_region(response, config.region)
+            if not region:
+                raise SlipstreamError.connection(
+                    "No healthy workers found via discovery"
+                )
+
+            workers = workers_for_region(response, region)
+            if not workers:
+                raise SlipstreamError.connection(
+                    f"No healthy workers in region '{region}'"
+                )
+
+            worker = workers[0]
+            logger.info(
+                "Selected worker %s in %s (ip=%s)", worker.id, region, worker.ip
+            )
+            config = SlipstreamConfig(
+                api_key=config.api_key,
+                region=region,
+                endpoint=f"http://{worker.ip}:{worker.ports.http}",
+                discovery_url=config.discovery_url,
+                connection_timeout=config.connection_timeout,
+                max_retries=config.max_retries,
+                leader_hints=config.leader_hints,
+                stream_tip_instructions=config.stream_tip_instructions,
+                stream_priority_fees=config.stream_priority_fees,
+                protocol_timeouts=config.protocol_timeouts,
+                priority_fee=config.priority_fee,
+                retry_backoff=config.retry_backoff,
+                min_confidence=config.min_confidence,
+                idle_timeout=config.idle_timeout,
+            )
+
         client = SlipstreamClient(config)
 
         try:

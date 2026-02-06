@@ -32,6 +32,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from .client import SlipstreamClient
+from .discovery import discover, workers_to_endpoints
 from .errors import SlipstreamError
 from .types import (
     FallbackStrategy,
@@ -76,6 +77,32 @@ class MultiRegionClient:
                     asyncio.ensure_future(result)
             except Exception:
                 logger.exception("Error in event listener for %s", event)
+
+    @staticmethod
+    async def connect(
+        config: SlipstreamConfig,
+        multi_config: Optional[MultiRegionConfig] = None,
+    ) -> MultiRegionClient:
+        """Connect using automatic worker discovery.
+
+        No manual worker configuration needed.
+        """
+        mc = multi_config or MultiRegionConfig()
+
+        response = await discover(config.discovery_url)
+        workers = workers_to_endpoints(response.workers)
+        if not workers:
+            raise SlipstreamError.connection(
+                "No healthy workers found via discovery"
+            )
+
+        logger.info(
+            "Discovered %d workers across %d regions for multi-region",
+            len(workers),
+            len(response.regions),
+        )
+
+        return await MultiRegionClient.create(config, workers, mc)
 
     @staticmethod
     async def create(
@@ -199,6 +226,7 @@ class MultiRegionClient:
             api_key=self._config.api_key,
             region=region,
             endpoint=worker.http,
+            discovery_url=self._config.discovery_url,
             connection_timeout=self._config.connection_timeout,
             max_retries=self._config.max_retries,
             leader_hints=self._config.leader_hints,

@@ -23,6 +23,7 @@ class ConfigBuilder:
         self._api_key: Optional[str] = None
         self._region: Optional[str] = None
         self._endpoint: Optional[str] = None
+        self._discovery_url: Optional[str] = None
         self._connection_timeout: int = 10_000
         self._max_retries: int = 3
         self._leader_hints: bool = True
@@ -44,6 +45,10 @@ class ConfigBuilder:
 
     def endpoint(self, url: str) -> ConfigBuilder:
         self._endpoint = url
+        return self
+
+    def discovery_url(self, url: str) -> ConfigBuilder:
+        self._discovery_url = url
         return self
 
     def connection_timeout(self, ms: int) -> ConfigBuilder:
@@ -93,10 +98,13 @@ class ConfigBuilder:
         if self._min_confidence < 0 or self._min_confidence > 100:
             raise SlipstreamError.config("min_confidence must be between 0 and 100")
 
+        from .discovery import DEFAULT_DISCOVERY_URL
+
         return SlipstreamConfig(
             api_key=self._api_key,
             region=self._region,
             endpoint=self._endpoint,
+            discovery_url=self._discovery_url or DEFAULT_DISCOVERY_URL,
             connection_timeout=self._connection_timeout,
             max_retries=self._max_retries,
             leader_hints=self._leader_hints,
@@ -116,15 +124,22 @@ def config_builder() -> ConfigBuilder:
 
 
 def get_http_endpoint(config: SlipstreamConfig) -> str:
-    """Get the HTTP base URL from config."""
+    """Get the HTTP base URL from config.
+
+    If an explicit endpoint is set, uses that.
+    Otherwise, uses the discovery URL for control plane API calls.
+    Worker connections are resolved via discovery in client.connect().
+    """
     if config.endpoint:
         return config.endpoint.rstrip("/")
-    region = config.region or "us-east"
-    return f"https://{region}.slipstream.allenhark.com"
+    return config.discovery_url.rstrip("/")
 
 
 def get_ws_endpoint(config: SlipstreamConfig) -> str:
     """Get the WebSocket URL from config."""
-    http_url = get_http_endpoint(config)
-    ws_url = http_url.replace("https://", "wss://").replace("http://", "ws://")
-    return f"{ws_url}/ws"
+    if config.endpoint:
+        http_url = config.endpoint.rstrip("/")
+        ws_url = http_url.replace("https://", "wss://").replace("http://", "ws://")
+        return f"{ws_url}/ws"
+    # Placeholder — real WS endpoint is resolved via discovery
+    return ""

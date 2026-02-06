@@ -38,6 +38,9 @@ from .multi_region import MultiRegionClient
 # Configuration
 from .config import ConfigBuilder, config_builder
 
+# Discovery
+from .discovery import discover, DEFAULT_DISCOVERY_URL
+
 # Error types
 from .errors import SlipstreamError
 
@@ -98,6 +101,9 @@ __all__ = [
     # Config
     "ConfigBuilder",
     "config_builder",
+    # Discovery
+    "discover",
+    "DEFAULT_DISCOVERY_URL",
     # Errors
     "SlipstreamError",
     # Worker

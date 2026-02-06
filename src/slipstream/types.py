@@ -45,6 +45,7 @@ class SlipstreamConfig:
     api_key: str
     region: Optional[str] = None
     endpoint: Optional[str] = None
+    discovery_url: str = "https://discovery.slipstream.allenhark.com"
     connection_timeout: int = 10_000
     max_retries: int = 3
     leader_hints: bool = True
@@ -323,6 +324,43 @@ class PerformanceMetrics:
     transactions_confirmed: int = 0
     average_latency_ms: float = 0.0
     success_rate: float = 0.0
+
+
+# =============================================================================
+# Discovery
+# =============================================================================
+
+
+@dataclass
+class DiscoveryWorkerPorts:
+    quic: int = 4433
+    ws: int = 9000
+    http: int = 9000
+
+
+@dataclass
+class DiscoveryRegion:
+    id: str = ""
+    name: str = ""
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+
+
+@dataclass
+class DiscoveryWorker:
+    id: str = ""
+    region: str = ""
+    ip: str = ""
+    ports: DiscoveryWorkerPorts = field(default_factory=DiscoveryWorkerPorts)
+    healthy: bool = True
+    version: Optional[str] = None
+
+
+@dataclass
+class DiscoveryResponse:
+    regions: List[DiscoveryRegion] = field(default_factory=list)
+    workers: List[DiscoveryWorker] = field(default_factory=list)
+    recommended_region: Optional[str] = None
 
 
 # =============================================================================
