@@ -1,6 +1,11 @@
-# allenhark-slipstream
+[![allenhark.com](https://allenhark.com/allenhark-logo.png)](https://allenhark.com)
 
-Python SDK for [Slipstream](https://allenhark.com) -- a sender-agnostic Solana transaction relay with leader-proximity-aware routing and multi-region fan-in.
+# Slipstream Python SDK
+
+The official Python client for **AllenHark Slipstream**, the high-performance Solana transaction relay and intelligence network.
+
+[![PyPI](https://img.shields.io/pypi/v/allenhark-slipstream.svg)](https://pypi.org/project/allenhark-slipstream/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 ## Features
 
