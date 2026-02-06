@@ -1,34 +1,140 @@
 """
-AllenHarkSlipstream - Python SDK for Slipstream
+AllenHarkSlipstream — Python SDK for Slipstream
 
-Example:
-    from slipstream import SlipstreamClient
+High-performance Solana transaction relay with leader-proximity-aware routing.
 
-    client = SlipstreamClient(api_key="sk_live_...")
-    await client.connect()
+Example::
+
+    from slipstream import SlipstreamClient, config_builder
+
+    config = (
+        config_builder()
+        .api_key("sk_test_12345678")
+        .region("us-east")
+        .build()
+    )
+
+    client = await SlipstreamClient.connect(config)
+
+    # Submit a transaction
+    result = await client.submit_transaction(tx_bytes)
+    print(f"TX: {result.transaction_id}")
+
+    # Subscribe to leader hints
+    client.on("leader_hint", lambda hint: print(f"Leader in {hint.preferred_region}"))
+    await client.subscribe_leader_hints()
+
+    # Check token balance
+    balance = await client.get_balance()
+    print(f"Balance: {balance.balance_sol} SOL ({balance.balance_tokens} tokens)")
 """
 
-# TODO: Implement SDK components
-# - SlipstreamClient
-# - ConnectionManager
-# - WorkerSelector
-# - StreamSubscriber
+__version__ = "0.1.0"
 
+# Client classes
+from .client import SlipstreamClient
+from .multi_region import MultiRegionClient
 
-class SlipstreamClient:
-    """Slipstream client for transaction relay."""
+# Configuration
+from .config import ConfigBuilder, config_builder
 
-    def __init__(self, api_key: str, region: str | None = None):
-        self.api_key = api_key
-        self.region = region
-        # TODO: Implement
+# Error types
+from .errors import SlipstreamError
 
-    async def connect(self) -> None:
-        """Connect to Slipstream worker."""
-        # TODO: Implement
-        pass
+# Worker selector (advanced usage)
+from .worker_selector import WorkerSelector
 
-    async def submit_transaction(self, tx: bytes) -> str:
-        """Submit a transaction."""
-        # TODO: Implement
-        return ""
+# Types — re-export all
+from .types import (
+    # Config types
+    SlipstreamConfig,
+    ProtocolTimeouts,
+    PriorityFeeConfig,
+    PriorityFeeSpeed,
+    BackoffStrategy,
+    # Connection types
+    ConnectionInfo,
+    ConnectionStatus,
+    ConnectionState,
+    WorkerEndpoint,
+    RateLimitInfo,
+    # Streaming message types
+    LeaderHint,
+    LeaderHintMetadata,
+    TipInstruction,
+    AlternativeSender,
+    PriorityFee,
+    # Transaction types
+    TransactionResult,
+    TransactionStatus,
+    SubmitOptions,
+    RoutingInfo,
+    TransactionError,
+    # Token billing types
+    Balance,
+    TopUpInfo,
+    UsageEntry,
+    DepositEntry,
+    PendingDeposit,
+    PaginationOptions,
+    # Multi-region types
+    RoutingRecommendation,
+    FallbackStrategy,
+    MultiRegionConfig,
+    RegionStatus,
+    # Metrics
+    PerformanceMetrics,
+    # Config endpoint responses
+    RegionInfo,
+    SenderInfo,
+    TipTier,
+)
+
+__all__ = [
+    "__version__",
+    # Clients
+    "SlipstreamClient",
+    "MultiRegionClient",
+    # Config
+    "ConfigBuilder",
+    "config_builder",
+    # Errors
+    "SlipstreamError",
+    # Worker
+    "WorkerSelector",
+    # Types
+    "SlipstreamConfig",
+    "ProtocolTimeouts",
+    "PriorityFeeConfig",
+    "PriorityFeeSpeed",
+    "BackoffStrategy",
+    "ConnectionInfo",
+    "ConnectionStatus",
+    "ConnectionState",
+    "WorkerEndpoint",
+    "RateLimitInfo",
+    "LeaderHint",
+    "LeaderHintMetadata",
+    "TipInstruction",
+    "AlternativeSender",
+    "PriorityFee",
+    "TransactionResult",
+    "TransactionStatus",
+    "SubmitOptions",
+    "RoutingInfo",
+    "TransactionError",
+    "Balance",
+    "TopUpInfo",
+    "UsageEntry",
+    "DepositEntry",
+    "PendingDeposit",
+    "PaginationOptions",
+    "RoutingRecommendation",
+    "FallbackStrategy",
+    "MultiRegionConfig",
+    "RegionStatus",
+    "PerformanceMetrics",
+    "RegionInfo",
+    "SenderInfo",
+    "TipTier",
+]
