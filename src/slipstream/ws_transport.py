@@ -46,10 +46,12 @@ class WebSocketTransport:
         url: str,
         api_key: str,
         region: Optional[str] = None,
+        tier: str = "pro",
     ) -> None:
         self._url = url
         self._api_key = api_key
         self._region = region
+        self._tier = tier
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self._session: Optional[aiohttp.ClientSession] = None
         self._connected = False
@@ -105,6 +107,7 @@ class WebSocketTransport:
                 "apiKey": self._api_key,
                 "features": ["leader_hints", "tip_instructions", "priority_fees"],
                 "region": self._region,
+                "tier": self._tier,
             }
         )
 

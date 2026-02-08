@@ -45,6 +45,7 @@ from .types import (
     ConnectionState,
     ConnectionStatus,
     DepositEntry,
+    FreeTierUsage,
     LeaderHint,
     PaginationOptions,
     PendingDeposit,
@@ -84,6 +85,7 @@ class SlipstreamClient:
             get_ws_endpoint(config),
             config.api_key,
             config.region,
+            config.tier.value if hasattr(config.tier, 'value') else str(config.tier),
         )
         self._connection_info: Optional[ConnectionInfo] = None
         self._connected = False
@@ -181,6 +183,7 @@ class SlipstreamClient:
                 region=region,
                 endpoint=f"http://{worker.ip}:{worker.ports.http}",
                 discovery_url=config.discovery_url,
+                tier=config.tier,
                 connection_timeout=config.connection_timeout,
                 max_retries=config.max_retries,
                 leader_hints=config.leader_hints,
@@ -347,6 +350,15 @@ class SlipstreamClient:
 
     async def get_pending_deposit(self) -> PendingDeposit:
         return await self._http.get_pending_deposit()
+
+    async def get_free_tier_usage(self) -> FreeTierUsage:
+        """Get free tier daily usage statistics.
+
+        Returns the number of transactions used today, remaining quota,
+        and when the counter resets (UTC midnight).
+        Only meaningful for keys on the 'free' tier.
+        """
+        return await self._http.get_free_tier_usage()
 
     @staticmethod
     def get_minimum_deposit_usd() -> float:

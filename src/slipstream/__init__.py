@@ -51,6 +51,7 @@ from .worker_selector import WorkerSelector
 from .types import (
     # Config types
     SlipstreamConfig,
+    BillingTier,
     ProtocolTimeouts,
     PriorityFeeConfig,
     PriorityFeeSpeed,
@@ -80,6 +81,7 @@ from .types import (
     DepositEntry,
     PendingDeposit,
     PaginationOptions,
+    FreeTierUsage,
     # Multi-region types
     RoutingRecommendation,
     FallbackStrategy,
@@ -110,6 +112,7 @@ __all__ = [
     "WorkerSelector",
     # Types
     "SlipstreamConfig",
+    "BillingTier",
     "ProtocolTimeouts",
     "PriorityFeeConfig",
     "PriorityFeeSpeed",
@@ -135,6 +138,7 @@ __all__ = [
     "DepositEntry",
     "PendingDeposit",
     "PaginationOptions",
+    "FreeTierUsage",
     "RoutingRecommendation",
     "FallbackStrategy",
     "MultiRegionConfig",

@@ -16,6 +16,13 @@ from typing import Dict, List, Optional
 # =============================================================================
 
 
+class BillingTier(str, Enum):
+    FREE = "free"
+    STANDARD = "standard"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
+
+
 class PriorityFeeSpeed(str, Enum):
     SLOW = "slow"
     FAST = "fast"
@@ -46,6 +53,7 @@ class SlipstreamConfig:
     region: Optional[str] = None
     endpoint: Optional[str] = None
     discovery_url: str = "https://discovery.slipstream.allenhark.com"
+    tier: BillingTier = BillingTier.PRO
     connection_timeout: int = 10_000
     max_retries: int = 3
     leader_hints: bool = True
@@ -268,6 +276,14 @@ class PendingDeposit:
 class PaginationOptions:
     limit: Optional[int] = None
     offset: Optional[int] = None
+
+
+@dataclass
+class FreeTierUsage:
+    used: int = 0
+    remaining: int = 0
+    limit: int = 100
+    resets_at: str = ""
 
 
 # =============================================================================

@@ -16,6 +16,7 @@ from .types import (
     Balance,
     DepositEntry,
     FallbackStrategy,
+    FreeTierUsage,
     PaginationOptions,
     PendingDeposit,
     RegionInfo,
@@ -199,6 +200,15 @@ class HttpTransport:
             pending_sol=data.get("pending_sol", 0.0),
             pending_count=data.get("pending_count", 0),
             minimum_deposit_usd=data.get("minimum_deposit_usd", 10.0),
+        )
+
+    async def get_free_tier_usage(self) -> FreeTierUsage:
+        data = await self._request("GET", "/v1/free-tier-usage")
+        return FreeTierUsage(
+            used=data.get("used", 0),
+            remaining=data.get("remaining", 0),
+            limit=data.get("limit", 100),
+            resets_at=data.get("resets_at", ""),
         )
 
     # =========================================================================

@@ -9,6 +9,7 @@ from typing import Optional
 from .errors import SlipstreamError
 from .types import (
     BackoffStrategy,
+    BillingTier,
     PriorityFeeConfig,
     PriorityFeeSpeed,
     ProtocolTimeouts,
@@ -24,6 +25,7 @@ class ConfigBuilder:
         self._region: Optional[str] = None
         self._endpoint: Optional[str] = None
         self._discovery_url: Optional[str] = None
+        self._tier: BillingTier = BillingTier.PRO
         self._connection_timeout: int = 10_000
         self._max_retries: int = 3
         self._leader_hints: bool = True
@@ -49,6 +51,10 @@ class ConfigBuilder:
 
     def discovery_url(self, url: str) -> ConfigBuilder:
         self._discovery_url = url
+        return self
+
+    def tier(self, tier: BillingTier) -> ConfigBuilder:
+        self._tier = tier
         return self
 
     def connection_timeout(self, ms: int) -> ConfigBuilder:
@@ -105,6 +111,7 @@ class ConfigBuilder:
             region=self._region,
             endpoint=self._endpoint,
             discovery_url=self._discovery_url or DEFAULT_DISCOVERY_URL,
+            tier=self._tier,
             connection_timeout=self._connection_timeout,
             max_retries=self._max_retries,
             leader_hints=self._leader_hints,
