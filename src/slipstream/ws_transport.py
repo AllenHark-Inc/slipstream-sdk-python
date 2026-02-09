@@ -19,8 +19,11 @@ from .errors import SlipstreamError
 from .types import (
     AlternativeSender,
     ConnectionInfo,
+    LatestBlockhash,
+    LatestSlot,
     LeaderHint,
     LeaderHintMetadata,
+    PingResult,
     PriorityFee,
     RateLimitInfo,
     RoutingInfo,
@@ -47,6 +50,7 @@ class WebSocketTransport:
         api_key: str,
         region: Optional[str] = None,
         tier: str = "pro",
+        keep_alive_interval: float = 5.0,
     ) -> None:
         self._url = url
         self._api_key = api_key
@@ -64,6 +68,9 @@ class WebSocketTransport:
         self._listeners: Dict[str, List[Callback]] = {}
         self._recv_task: Optional[asyncio.Task[None]] = None
         self._heartbeat_task: Optional[asyncio.Task[None]] = None
+        self._ping_seq: int = 0
+        self._pending_ping: Optional[asyncio.Future[PingResult]] = None
+        self._keep_alive_interval: float = keep_alive_interval
 
     def on(self, event: str, callback: Callback) -> None:
         """Register an event listener."""
@@ -182,10 +189,46 @@ class WebSocketTransport:
         if self._connected:
             await self._send({"type": "subscribe", "stream": "priority_fees"})
 
+    async def subscribe_latest_blockhash(self) -> None:
+        self._subscribed_streams.add("latest_blockhash")
+        if self._connected:
+            await self._send({"type": "subscribe", "stream": "latest_blockhash"})
+
+    async def subscribe_latest_slot(self) -> None:
+        self._subscribed_streams.add("latest_slot")
+        if self._connected:
+            await self._send({"type": "subscribe", "stream": "latest_slot"})
+
     async def unsubscribe(self, stream: str) -> None:
         self._subscribed_streams.discard(stream)
         if self._connected:
             await self._send({"type": "unsubscribe", "stream": stream})
+
+    # =========================================================================
+    # Ping / Keep-Alive
+    # =========================================================================
+
+    async def ping(self) -> PingResult:
+        """Send a ping and measure RTT + clock offset."""
+        if not self._connected:
+            raise SlipstreamError.connection("Not connected")
+
+        seq = self._ping_seq
+        self._ping_seq += 1
+        client_send_time = int(time.time() * 1000)
+
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future[PingResult] = loop.create_future()
+        self._pending_ping = future
+
+        await self._send({"type": "ping", "seq": seq, "client_time": client_send_time})
+
+        try:
+            result = await asyncio.wait_for(future, timeout=5.0)
+            return result
+        except asyncio.TimeoutError:
+            self._pending_ping = None
+            raise SlipstreamError.connection("Ping timeout")
 
     # =========================================================================
     # Transaction Submission
@@ -273,12 +316,14 @@ class WebSocketTransport:
                 asyncio.create_task(self._schedule_reconnect())
 
     async def _heartbeat_loop(self) -> None:
+        """Background loop for keep-alive pings."""
         while self._connected:
-            await asyncio.sleep(30)
+            await asyncio.sleep(self._keep_alive_interval)
             if self._connected:
-                await self._send(
-                    {"type": "pong", "timestamp": int(time.time() * 1000)}
-                )
+                try:
+                    await self.ping()
+                except Exception:
+                    pass  # Ping failed, continue
 
     def _handle_message(self, msg: Dict[str, Any]) -> None:
         msg_type = msg.get("type", "")
@@ -291,6 +336,12 @@ class WebSocketTransport:
 
         elif msg_type == "priority_fee":
             self._emit("priority_fee", _parse_priority_fee(msg))
+
+        elif msg_type == "latest_blockhash":
+            self._emit("latest_blockhash", _parse_latest_blockhash(msg))
+
+        elif msg_type == "latest_slot":
+            self._emit("latest_slot", _parse_latest_slot(msg))
 
         elif msg_type in (
             "transaction_accepted",
@@ -312,6 +363,21 @@ class WebSocketTransport:
                     future.set_result(result)
 
             self._emit("transaction_update", result)
+
+        elif msg_type == "pong":
+            if self._pending_ping and not self._pending_ping.done():
+                now = int(time.time() * 1000)
+                server_time = msg.get("server_time", now)
+                client_time = msg.get("client_time", now)
+                rtt_ms = now - client_time
+                clock_offset_ms = server_time - (client_time + rtt_ms // 2)
+                self._pending_ping.set_result(PingResult(
+                    seq=msg.get("seq", 0),
+                    rtt_ms=rtt_ms,
+                    clock_offset_ms=clock_offset_ms,
+                    server_time=server_time,
+                ))
+                self._pending_ping = None
 
         elif msg_type == "heartbeat":
             asyncio.ensure_future(
@@ -374,7 +440,7 @@ def _parse_leader_hint(msg: Dict[str, Any]) -> LeaderHint:
         preferred_region=msg.get("preferred_region", ""),
         backup_regions=msg.get("backup_regions", []),
         confidence=msg.get("confidence", 0),
-        leader_pubkey=msg.get("leader_pubkey"),
+        leader_pubkey=msg.get("leader_pubkey", ""),
         metadata=LeaderHintMetadata(
             tpu_rtt_ms=metadata.get("tpu_rtt_ms", 0),
             region_score=metadata.get("region_score", 0.0),
@@ -451,4 +517,19 @@ def _parse_transaction_result_ws(msg: Dict[str, Any]) -> TransactionResult:
         timestamp=msg.get("timestamp", 0),
         routing=routing,
         error=error,
+    )
+
+
+def _parse_latest_blockhash(msg: Dict[str, Any]) -> LatestBlockhash:
+    return LatestBlockhash(
+        blockhash=msg.get("blockhash", ""),
+        last_valid_block_height=msg.get("last_valid_block_height", 0),
+        timestamp=msg.get("timestamp", 0),
+    )
+
+
+def _parse_latest_slot(msg: Dict[str, Any]) -> LatestSlot:
+    return LatestSlot(
+        slot=msg.get("slot", 0),
+        timestamp=msg.get("timestamp", 0),
     )

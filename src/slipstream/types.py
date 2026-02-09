@@ -59,11 +59,15 @@ class SlipstreamConfig:
     leader_hints: bool = True
     stream_tip_instructions: bool = False
     stream_priority_fees: bool = False
+    stream_latest_blockhash: bool = False
+    stream_latest_slot: bool = False
     protocol_timeouts: ProtocolTimeouts = field(default_factory=ProtocolTimeouts)
     priority_fee: PriorityFeeConfig = field(default_factory=PriorityFeeConfig)
     retry_backoff: BackoffStrategy = BackoffStrategy.EXPONENTIAL
     min_confidence: int = 70
     idle_timeout: Optional[int] = None
+    keep_alive: bool = True
+    keep_alive_interval: float = 5.0
 
 
 # =============================================================================
@@ -131,7 +135,7 @@ class LeaderHint:
     preferred_region: str = ""
     backup_regions: List[str] = field(default_factory=list)
     confidence: int = 0
-    leader_pubkey: Optional[str] = None
+    leader_pubkey: str = ""
     metadata: LeaderHintMetadata = field(default_factory=LeaderHintMetadata)
 
 
@@ -166,6 +170,19 @@ class PriorityFee:
     landing_probability: int = 0
     network_congestion: str = ""
     recent_success_rate: float = 0.0
+
+
+@dataclass
+class LatestBlockhash:
+    blockhash: str = ""
+    last_valid_block_height: int = 0
+    timestamp: int = 0
+
+
+@dataclass
+class LatestSlot:
+    slot: int = 0
+    timestamp: int = 0
 
 
 # =============================================================================
@@ -301,7 +318,7 @@ class FallbackStrategy(str, Enum):
 @dataclass
 class RoutingRecommendation:
     best_region: str = ""
-    leader_pubkey: Optional[str] = None
+    leader_pubkey: str = ""
     slot: int = 0
     confidence: int = 0
     expected_rtt_ms: Optional[int] = None
@@ -332,6 +349,15 @@ class RegionStatus:
 # =============================================================================
 # Metrics
 # =============================================================================
+
+
+@dataclass
+class PingResult:
+    """Result of a ping/pong exchange for keep-alive and time sync."""
+    seq: int = 0
+    rtt_ms: int = 0
+    clock_offset_ms: int = 0
+    server_time: int = 0
 
 
 @dataclass

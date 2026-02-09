@@ -83,6 +83,8 @@ config = (
 | `priority_fee(config)` | `PriorityFeeConfig` | `enabled=False, speed=FAST` | Priority fee settings |
 | `retry_backoff(strategy)` | `BackoffStrategy` | `EXPONENTIAL` | Retry backoff strategy (`LINEAR` or `EXPONENTIAL`) |
 | `min_confidence(n)` | `int` | `70` | Minimum confidence (0-100) for leader hint acceptance |
+| `keep_alive(enabled)` | `bool` | `True` | Enable background keep-alive ping |
+| `keep_alive_interval(secs)` | `float` | `5.0` | Keep-alive ping interval in seconds |
 | `idle_timeout(ms)` | `int` | `None` | Disconnect after idle period |
 
 ## Connecting
@@ -233,6 +235,38 @@ client = await SlipstreamClient.connect(config)
 client.on("leader_hint", on_leader_hint)
 client.on("tip_instruction", on_tip)
 client.on("priority_fee", on_fee)
+```
+
+## Keep-Alive & Time Sync
+
+The SDK includes a background keep-alive mechanism that also provides latency measurement and clock synchronization with the server using NTP-style calculation.
+
+```python
+# Enabled by default (5s interval). Configure via:
+config = (
+    config_builder()
+    .api_key("sk_live_your_key_here")
+    .keep_alive(True)              # default: True
+    .keep_alive_interval(5.0)      # default: 5.0 seconds
+    .build()
+)
+
+client = await SlipstreamClient.connect(config)
+
+# Manual ping
+ping = await client.ping()
+print(f"RTT: {ping.rtt_ms}ms, Clock offset: {ping.clock_offset_ms}ms")
+
+# Latency (median one-way from sliding window of 10 samples)
+latency = client.latency_ms()       # int | None
+offset = client.clock_offset_ms()   # int | None
+server_now = client.server_time()    # int (unix ms)
+
+# Listen for ping events
+def on_ping(result):
+    print(f"Ping #{result.seq}: RTT {result.rtt_ms}ms")
+
+client.on("ping", on_ping)
 ```
 
 ## Token Billing
@@ -438,6 +472,7 @@ Register listeners with `client.on(event, callback)` and remove with `client.off
 | `transaction_update` | `TransactionResult` | Transaction status change |
 | `connected` | -- | WebSocket connected |
 | `disconnected` | -- | WebSocket disconnected |
+| `ping` | `PingResult` | Keep-alive ping result (RTT, clock offset) |
 | `error` | `Exception` | Transport error |
 
 ## Examples

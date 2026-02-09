@@ -31,6 +31,7 @@ Example::
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -46,10 +47,13 @@ from .types import (
     ConnectionStatus,
     DepositEntry,
     FreeTierUsage,
+    LatestBlockhash,
+    LatestSlot,
     LeaderHint,
     PaginationOptions,
     PendingDeposit,
     PerformanceMetrics,
+    PingResult,
     PriorityFee,
     RoutingRecommendation,
     SlipstreamConfig,
@@ -64,6 +68,53 @@ from .ws_transport import WebSocketTransport
 logger = logging.getLogger("slipstream.client")
 
 Callback = Callable[..., Any]
+
+
+class TimeSyncManager:
+    """Tracks ping results for latency and clock synchronization."""
+
+    def __init__(self, max_samples: int = 10) -> None:
+        self._samples: List[PingResult] = []
+        self._max_samples = max_samples
+        self._task: Optional[asyncio.Task[None]] = None
+
+    def record(self, result: PingResult) -> None:
+        self._samples.append(result)
+        if len(self._samples) > self._max_samples:
+            self._samples.pop(0)
+
+    def median_rtt_ms(self) -> Optional[int]:
+        if not self._samples:
+            return None
+        rtts = sorted(s.rtt_ms for s in self._samples)
+        return rtts[len(rtts) // 2]
+
+    def median_clock_offset_ms(self) -> Optional[int]:
+        if not self._samples:
+            return None
+        offsets = sorted(s.clock_offset_ms for s in self._samples)
+        return offsets[len(offsets) // 2]
+
+    def start(self, ping_fn: Callable[..., Any], interval: float, on_result: Optional[Callable[[PingResult], Any]] = None) -> None:
+        self.stop()
+
+        async def loop() -> None:
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    result = await ping_fn()
+                    self.record(result)
+                    if on_result:
+                        on_result(result)
+                except Exception:
+                    pass
+
+        self._task = asyncio.create_task(loop())
+
+    def stop(self) -> None:
+        if self._task:
+            self._task.cancel()
+            self._task = None
 
 
 class SlipstreamClient:
@@ -91,6 +142,7 @@ class SlipstreamClient:
         self._connected = False
         self._latest_tip: Optional[TipInstruction] = None
         self._listeners: Dict[str, List[Callback]] = {}
+        self._time_sync = TimeSyncManager(10)
 
         # Metrics
         self._tx_submitted = 0
@@ -102,6 +154,8 @@ class SlipstreamClient:
         self._ws.on("leader_hint", lambda h: self._emit("leader_hint", h))
         self._ws.on("tip_instruction", self._on_tip)
         self._ws.on("priority_fee", lambda f: self._emit("priority_fee", f))
+        self._ws.on("latest_blockhash", lambda b: self._emit("latest_blockhash", b))
+        self._ws.on("latest_slot", lambda s: self._emit("latest_slot", s))
         self._ws.on("transaction_update", lambda r: self._emit("transaction_update", r))
         self._ws.on("connected", lambda *_: self._set_connected(True))
         self._ws.on("disconnected", lambda *_: self._set_connected(False))
@@ -123,6 +177,7 @@ class SlipstreamClient:
         """Register an event listener.
 
         Events: ``leader_hint``, ``tip_instruction``, ``priority_fee``,
+        ``latest_blockhash``, ``latest_slot``,
         ``transaction_update``, ``connected``, ``disconnected``, ``error``
         """
         if event not in self._listeners:
@@ -189,6 +244,8 @@ class SlipstreamClient:
                 leader_hints=config.leader_hints,
                 stream_tip_instructions=config.stream_tip_instructions,
                 stream_priority_fees=config.stream_priority_fees,
+                stream_latest_blockhash=config.stream_latest_blockhash,
+                stream_latest_slot=config.stream_latest_slot,
                 protocol_timeouts=config.protocol_timeouts,
                 priority_fee=config.priority_fee,
                 retry_backoff=config.retry_backoff,
@@ -209,6 +266,10 @@ class SlipstreamClient:
                 await client._ws.subscribe_tip_instructions()
             if config.stream_priority_fees:
                 await client._ws.subscribe_priority_fees()
+            if config.stream_latest_blockhash:
+                await client._ws.subscribe_latest_blockhash()
+            if config.stream_latest_slot:
+                await client._ws.subscribe_latest_slot()
 
         except Exception:
             # WebSocket failed — fall back to HTTP-only
@@ -296,6 +357,20 @@ class SlipstreamClient:
         Listen via ``client.on("priority_fee", callback)``.
         """
         await self._ws.subscribe_priority_fees()
+
+    async def subscribe_latest_blockhash(self) -> None:
+        """Subscribe to latest blockhash updates.
+
+        Listen via ``client.on("latest_blockhash", callback)``.
+        """
+        await self._ws.subscribe_latest_blockhash()
+
+    async def subscribe_latest_slot(self) -> None:
+        """Subscribe to latest slot updates.
+
+        Listen via ``client.on("latest_slot", callback)``.
+        """
+        await self._ws.subscribe_latest_slot()
 
     # =========================================================================
     # Tip Caching

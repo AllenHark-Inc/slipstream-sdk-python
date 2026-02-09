@@ -31,11 +31,15 @@ class ConfigBuilder:
         self._leader_hints: bool = True
         self._stream_tip_instructions: bool = False
         self._stream_priority_fees: bool = False
+        self._stream_latest_blockhash: bool = False
+        self._stream_latest_slot: bool = False
         self._protocol_timeouts: ProtocolTimeouts = ProtocolTimeouts()
         self._priority_fee: PriorityFeeConfig = PriorityFeeConfig()
         self._retry_backoff: BackoffStrategy = BackoffStrategy.EXPONENTIAL
         self._min_confidence: int = 70
         self._idle_timeout: Optional[int] = None
+        self._keep_alive: bool = True
+        self._keep_alive_interval: float = 5.0
 
     def api_key(self, key: str) -> ConfigBuilder:
         self._api_key = key
@@ -77,6 +81,14 @@ class ConfigBuilder:
         self._stream_priority_fees = enabled
         return self
 
+    def stream_latest_blockhash(self, enabled: bool) -> ConfigBuilder:
+        self._stream_latest_blockhash = enabled
+        return self
+
+    def stream_latest_slot(self, enabled: bool) -> ConfigBuilder:
+        self._stream_latest_slot = enabled
+        return self
+
     def protocol_timeouts(self, timeouts: ProtocolTimeouts) -> ConfigBuilder:
         self._protocol_timeouts = timeouts
         return self
@@ -95,6 +107,14 @@ class ConfigBuilder:
 
     def idle_timeout(self, ms: int) -> ConfigBuilder:
         self._idle_timeout = ms
+        return self
+
+    def keep_alive(self, enabled: bool) -> ConfigBuilder:
+        self._keep_alive = enabled
+        return self
+
+    def keep_alive_interval(self, seconds: float) -> ConfigBuilder:
+        self._keep_alive_interval = seconds
         return self
 
     def build(self) -> SlipstreamConfig:
@@ -117,11 +137,15 @@ class ConfigBuilder:
             leader_hints=self._leader_hints,
             stream_tip_instructions=self._stream_tip_instructions,
             stream_priority_fees=self._stream_priority_fees,
+            stream_latest_blockhash=self._stream_latest_blockhash,
+            stream_latest_slot=self._stream_latest_slot,
             protocol_timeouts=self._protocol_timeouts,
             priority_fee=self._priority_fee,
             retry_backoff=self._retry_backoff,
             min_confidence=self._min_confidence,
             idle_timeout=self._idle_timeout,
+            keep_alive=self._keep_alive,
+            keep_alive_interval=self._keep_alive_interval,
         )
 
 

@@ -68,6 +68,8 @@ from .types import (
     TipInstruction,
     AlternativeSender,
     PriorityFee,
+    LatestBlockhash,
+    LatestSlot,
     # Transaction types
     TransactionResult,
     TransactionStatus,
@@ -127,6 +129,8 @@ __all__ = [
     "TipInstruction",
     "AlternativeSender",
     "PriorityFee",
+    "LatestBlockhash",
+    "LatestSlot",
     "TransactionResult",
     "TransactionStatus",
     "SubmitOptions",
