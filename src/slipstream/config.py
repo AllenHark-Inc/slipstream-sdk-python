@@ -40,6 +40,9 @@ class ConfigBuilder:
         self._idle_timeout: Optional[int] = None
         self._keep_alive: bool = True
         self._keep_alive_interval: float = 5.0
+        self._webhook_url: Optional[str] = None
+        self._webhook_events: Optional[list] = None
+        self._webhook_notification_level: Optional[str] = None
 
     def api_key(self, key: str) -> ConfigBuilder:
         self._api_key = key
@@ -117,6 +120,21 @@ class ConfigBuilder:
         self._keep_alive_interval = seconds
         return self
 
+    def webhook_url(self, url: str) -> ConfigBuilder:
+        """Set webhook URL (HTTPS). If set, SDK auto-registers the webhook on connect."""
+        self._webhook_url = url
+        return self
+
+    def webhook_events(self, events: list) -> ConfigBuilder:
+        """Set webhook event types to subscribe to (default: ['transaction.confirmed'])."""
+        self._webhook_events = events
+        return self
+
+    def webhook_notification_level(self, level: str) -> ConfigBuilder:
+        """Set notification level for transaction events (default: 'final')."""
+        self._webhook_notification_level = level
+        return self
+
     def build(self) -> SlipstreamConfig:
         if not self._api_key:
             raise SlipstreamError.config("api_key is required")
@@ -146,6 +164,9 @@ class ConfigBuilder:
             idle_timeout=self._idle_timeout,
             keep_alive=self._keep_alive,
             keep_alive_interval=self._keep_alive_interval,
+            webhook_url=self._webhook_url,
+            webhook_events=self._webhook_events or ["transaction.confirmed"],
+            webhook_notification_level=self._webhook_notification_level or "final",
         )
 
 

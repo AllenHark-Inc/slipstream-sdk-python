@@ -62,6 +62,7 @@ from .types import (
     TopUpInfo,
     TransactionResult,
     UsageEntry,
+    WebhookConfig,
 )
 from .ws_transport import WebSocketTransport
 
@@ -251,6 +252,9 @@ class SlipstreamClient:
                 retry_backoff=config.retry_backoff,
                 min_confidence=config.min_confidence,
                 idle_timeout=config.idle_timeout,
+                webhook_url=config.webhook_url,
+                webhook_events=config.webhook_events,
+                webhook_notification_level=config.webhook_notification_level,
             )
 
         client = SlipstreamClient(config)
@@ -280,6 +284,18 @@ class SlipstreamClient:
                 server_time=int(time.time() * 1000),
             )
             client._connected = True
+
+        # Auto-register webhook if configured
+        if config.webhook_url:
+            try:
+                await client.register_webhook(
+                    config.webhook_url,
+                    config.webhook_events,
+                    config.webhook_notification_level,
+                )
+                logger.info("Webhook auto-registered at %s", config.webhook_url)
+            except Exception:
+                logger.debug("Failed to auto-register webhook", exc_info=True)
 
         return client
 
@@ -459,3 +475,31 @@ class SlipstreamClient:
                 else 0.0
             ),
         )
+
+    # =========================================================================
+    # Webhooks
+    # =========================================================================
+
+    async def register_webhook(
+        self,
+        url: str,
+        events: Optional[list] = None,
+        notification_level: Optional[str] = None,
+    ) -> WebhookConfig:
+        """Register or update a webhook for this API key.
+
+        Returns the webhook configuration including the secret
+        (only visible on register/update).
+        """
+        return await self._http.register_webhook(url, events, notification_level)
+
+    async def get_webhook(self) -> Optional[WebhookConfig]:
+        """Get current webhook configuration for this API key.
+
+        Returns the webhook config with the secret masked, or None if none configured.
+        """
+        return await self._http.get_webhook()
+
+    async def delete_webhook(self) -> None:
+        """Delete (disable) the webhook for this API key."""
+        await self._http.delete_webhook()

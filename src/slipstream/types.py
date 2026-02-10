@@ -68,6 +68,9 @@ class SlipstreamConfig:
     idle_timeout: Optional[int] = None
     keep_alive: bool = True
     keep_alive_interval: float = 5.0
+    webhook_url: Optional[str] = None
+    webhook_events: List[str] = field(default_factory=lambda: ["transaction.confirmed"])
+    webhook_notification_level: str = "final"
 
 
 # =============================================================================
@@ -431,3 +434,42 @@ class SenderInfo:
     display_name: str = ""
     tip_wallets: List[str] = field(default_factory=list)
     tip_tiers: List[TipTier] = field(default_factory=list)
+
+
+# =============================================================================
+# Webhook Types
+# =============================================================================
+
+
+class WebhookEvent(str, Enum):
+    TRANSACTION_SENT = "transaction.sent"
+    TRANSACTION_CONFIRMED = "transaction.confirmed"
+    TRANSACTION_FAILED = "transaction.failed"
+    BILLING_LOW_BALANCE = "billing.low_balance"
+    BILLING_DEPLETED = "billing.depleted"
+    BILLING_DEPOSIT_RECEIVED = "billing.deposit_received"
+
+
+class WebhookNotificationLevel(str, Enum):
+    """Notification level for transaction events."""
+    ALL = "all"       # Receive all transaction events (sent + confirmed + failed)
+    FINAL = "final"   # Receive only terminal events (confirmed + failed)
+    CONFIRMED = "confirmed"  # Receive only confirmed events
+
+
+@dataclass
+class WebhookConfig:
+    id: str = ""
+    url: str = ""
+    secret: Optional[str] = None
+    events: List[str] = field(default_factory=list)
+    notification_level: str = "final"
+    is_active: bool = True
+    created_at: Optional[str] = None
+
+
+@dataclass
+class RegisterWebhookRequest:
+    url: str = ""
+    events: Optional[List[str]] = None
+    notification_level: Optional[str] = None

@@ -95,6 +95,11 @@ from .types import (
     RegionInfo,
     SenderInfo,
     TipTier,
+    # Webhook types
+    WebhookEvent,
+    WebhookNotificationLevel,
+    WebhookConfig,
+    RegisterWebhookRequest,
 )
 
 __all__ = [
@@ -151,4 +156,8 @@ __all__ = [
     "RegionInfo",
     "SenderInfo",
     "TipTier",
+    "WebhookEvent",
+    "WebhookNotificationLevel",
+    "WebhookConfig",
+    "RegisterWebhookRequest",
 ]

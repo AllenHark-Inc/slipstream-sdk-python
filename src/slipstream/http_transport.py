@@ -27,6 +27,7 @@ from .types import (
     TopUpInfo,
     TransactionResult,
     UsageEntry,
+    WebhookConfig,
 )
 
 
@@ -274,6 +275,53 @@ class HttpTransport:
             )
             for s in senders
         ]
+
+    # =========================================================================
+    # Webhooks
+    # =========================================================================
+
+    async def register_webhook(
+        self,
+        url: str,
+        events: Optional[List[str]] = None,
+        notification_level: Optional[str] = None,
+    ) -> WebhookConfig:
+        body: Dict[str, Any] = {"url": url}
+        if events is not None:
+            body["events"] = events
+        if notification_level is not None:
+            body["notification_level"] = notification_level
+
+        data = await self._request("POST", "/v1/webhooks", body)
+        return WebhookConfig(
+            id=data.get("id", ""),
+            url=data.get("url", ""),
+            secret=data.get("secret"),
+            events=data.get("events", []),
+            notification_level=data.get("notification_level", "final"),
+            is_active=data.get("is_active", True),
+            created_at=data.get("created_at"),
+        )
+
+    async def get_webhook(self) -> Optional[WebhookConfig]:
+        try:
+            data = await self._request("GET", "/v1/webhooks")
+            return WebhookConfig(
+                id=data.get("id", ""),
+                url=data.get("url", ""),
+                secret=data.get("secret"),
+                events=data.get("events", []),
+                notification_level=data.get("notification_level", "final"),
+                is_active=data.get("is_active", True),
+                created_at=data.get("created_at"),
+            )
+        except SlipstreamError as e:
+            if "404" in str(e):
+                return None
+            raise
+
+    async def delete_webhook(self) -> None:
+        await self._request("DELETE", "/v1/webhooks")
 
 
 # =============================================================================
