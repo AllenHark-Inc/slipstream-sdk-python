@@ -47,6 +47,7 @@ from .types import (
     ConnectionStatus,
     DepositEntry,
     FreeTierUsage,
+    LandingRateStats,
     LatestBlockhash,
     LatestSlot,
     LeaderHint,
@@ -503,3 +504,47 @@ class SlipstreamClient:
     async def delete_webhook(self) -> None:
         """Delete (disable) the webhook for this API key."""
         await self._http.delete_webhook()
+
+    # =========================================================================
+    # Landing Rates
+    # =========================================================================
+
+    async def get_landing_rates(
+        self,
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+    ) -> "LandingRateStats":
+        """Get transaction landing rate statistics for this API key.
+
+        Returns overall landing rate plus per-sender and per-region breakdowns.
+        Defaults to the last 24 hours if no time range is specified.
+        """
+        return await self._http.get_landing_rates(start=start, end=end)
+
+    # =========================================================================
+    # Bundle Submission
+    # =========================================================================
+
+    async def submit_bundle(
+        self,
+        transactions: "List[bytes]",
+        tip_lamports: "Optional[int]" = None,
+    ) -> "BundleResult":
+        """Submit a bundle of transactions for atomic execution.
+
+        Bundles contain 2-5 transactions that are executed atomically — either
+        all succeed or none. The sender must support bundle submission.
+
+        Args:
+            transactions: 2 to 5 signed transactions (raw bytes).
+            tip_lamports: Optional tip amount in lamports.
+
+        Returns:
+            Bundle result with bundle ID, acceptance status, and signatures.
+
+        Billing:
+            5 tokens (0.00025 SOL) per bundle regardless of transaction count.
+        """
+        if len(transactions) < 2 or len(transactions) > 5:
+            raise ValueError("Bundle must contain 2-5 transactions")
+        return await self._http.submit_bundle(transactions, tip_lamports)

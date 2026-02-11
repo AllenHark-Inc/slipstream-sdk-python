@@ -100,6 +100,14 @@ from .types import (
     WebhookNotificationLevel,
     WebhookConfig,
     RegisterWebhookRequest,
+    # Landing rate types
+    LandingRateStats,
+    LandingRatePeriod,
+    SenderLandingRate,
+    RegionLandingRate,
+    LandingRateOptions,
+    # Bundle types
+    BundleResult,
 )
 
 __all__ = [
@@ -160,4 +168,10 @@ __all__ = [
     "WebhookNotificationLevel",
     "WebhookConfig",
     "RegisterWebhookRequest",
+    "LandingRateStats",
+    "LandingRatePeriod",
+    "SenderLandingRate",
+    "RegionLandingRate",
+    "LandingRateOptions",
+    "BundleResult",
 ]

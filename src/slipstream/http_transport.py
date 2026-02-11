@@ -323,6 +323,81 @@ class HttpTransport:
     async def delete_webhook(self) -> None:
         await self._request("DELETE", "/v1/webhooks")
 
+    # =========================================================================
+    # Landing Rates
+    # =========================================================================
+
+    async def get_landing_rates(
+        self,
+        start: Optional[str] = None,
+        end: Optional[str] = None,
+    ) -> "LandingRateStats":
+        params: Dict[str, str] = {}
+        if start is not None:
+            params["start"] = start
+        if end is not None:
+            params["end"] = end
+        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        path = f"/v1/metrics/landing-rates?{qs}" if qs else "/v1/metrics/landing-rates"
+        data = await self._request("GET", path)
+        from .types import (
+            LandingRatePeriod,
+            LandingRateStats,
+            RegionLandingRate,
+            SenderLandingRate,
+        )
+        return LandingRateStats(
+            period=LandingRatePeriod(
+                start=data.get("period", {}).get("start", ""),
+                end=data.get("period", {}).get("end", ""),
+            ),
+            total_sent=data.get("total_sent", 0),
+            total_landed=data.get("total_landed", 0),
+            landing_rate=data.get("landing_rate", 0.0),
+            by_sender=[
+                SenderLandingRate(
+                    sender=s.get("sender", ""),
+                    total_sent=s.get("total_sent", 0),
+                    total_landed=s.get("total_landed", 0),
+                    landing_rate=s.get("landing_rate", 0.0),
+                )
+                for s in data.get("by_sender", [])
+            ],
+            by_region=[
+                RegionLandingRate(
+                    region=r.get("region", ""),
+                    total_sent=r.get("total_sent", 0),
+                    total_landed=r.get("total_landed", 0),
+                    landing_rate=r.get("landing_rate", 0.0),
+                )
+                for r in data.get("by_region", [])
+            ],
+        )
+
+    # =========================================================================
+    # Bundle Submission
+    # =========================================================================
+
+    async def submit_bundle(
+        self,
+        transactions: "List[bytes]",
+        tip_lamports: Optional[int] = None,
+    ) -> "BundleResult":
+        import base64 as b64
+        txs_b64 = [b64.b64encode(tx).decode() for tx in transactions]
+        body: Dict[str, Any] = {"transactions": txs_b64}
+        if tip_lamports is not None:
+            body["tip_lamports"] = tip_lamports
+        data = await self._request("POST", "/v1/bundles/submit", body=body)
+        from .types import BundleResult
+        return BundleResult(
+            bundle_id=data.get("bundle_id", ""),
+            accepted=data.get("accepted", False),
+            signatures=data.get("signatures", []),
+            sender_id=data.get("sender_id"),
+            error=data.get("error"),
+        )
+
 
 # =============================================================================
 # Helpers

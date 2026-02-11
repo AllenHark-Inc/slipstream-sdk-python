@@ -473,3 +473,62 @@ class RegisterWebhookRequest:
     url: str = ""
     events: Optional[List[str]] = None
     notification_level: Optional[str] = None
+
+
+# =============================================================================
+# Landing Rate Types
+# =============================================================================
+
+
+@dataclass
+class LandingRatePeriod:
+    start: str = ""
+    end: str = ""
+
+
+@dataclass
+class SenderLandingRate:
+    sender: str = ""
+    total_sent: int = 0
+    total_landed: int = 0
+    landing_rate: float = 0.0
+
+
+@dataclass
+class RegionLandingRate:
+    region: str = ""
+    total_sent: int = 0
+    total_landed: int = 0
+    landing_rate: float = 0.0
+
+
+@dataclass
+class LandingRateStats:
+    period: LandingRatePeriod = field(default_factory=LandingRatePeriod)
+    total_sent: int = 0
+    total_landed: int = 0
+    landing_rate: float = 0.0
+    by_sender: List[SenderLandingRate] = field(default_factory=list)
+    by_region: List[RegionLandingRate] = field(default_factory=list)
+
+
+@dataclass
+class LandingRateOptions:
+    """Options for querying landing rates."""
+    start: Optional[str] = None
+    end: Optional[str] = None
+
+
+# =============================================================================
+# Bundle Types
+# =============================================================================
+
+
+@dataclass
+class BundleResult:
+    """Result of a bundle submission."""
+    bundle_id: str = ""
+    accepted: bool = False
+    signatures: List[str] = field(default_factory=list)
+    sender_id: Optional[str] = None
+    error: Optional[str] = None
