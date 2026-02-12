@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 # =============================================================================
@@ -221,12 +221,25 @@ class TransactionError:
 
 
 @dataclass
+class RetryOptions:
+    """Retry policy options for intelligent retry behavior."""
+    max_retries: int = 2
+    """Maximum number of retry attempts (default: 2)"""
+    backoff_base_ms: int = 100
+    """Base backoff delay in milliseconds (default: 100ms, exponential with jitter)"""
+    cross_sender_retry: bool = False
+    """Whether to retry with a different sender on failure (default: False)"""
+
+
+@dataclass
 class SubmitOptions:
     broadcast_mode: bool = False
     preferred_sender: Optional[str] = None
     max_retries: int = 2
     timeout_ms: int = 30_000
     dedup_id: Optional[str] = None
+    retry: Optional[RetryOptions] = None
+    """Retry policy (overrides max_retries with more control)"""
 
 
 @dataclass
@@ -532,3 +545,33 @@ class BundleResult:
     signatures: List[str] = field(default_factory=list)
     sender_id: Optional[str] = None
     error: Optional[str] = None
+
+
+@dataclass
+class RpcError:
+    """JSON-RPC error object."""
+    code: int = 0
+    message: str = ""
+    data: Optional[Any] = None
+
+
+@dataclass
+class RpcResponse:
+    """Raw JSON-RPC 2.0 response from the Solana RPC proxy."""
+    jsonrpc: str = "2.0"
+    id: Any = 1
+    result: Optional[Any] = None
+    error: Optional[RpcError] = None
+
+
+@dataclass
+class SimulationResult:
+    """Result of simulating a transaction via the RPC proxy."""
+    err: Optional[Any] = None
+    """Error if simulation failed, None on success."""
+    logs: List[str] = field(default_factory=list)
+    """Program log messages."""
+    units_consumed: int = 0
+    """Compute units consumed."""
+    return_data: Optional[Any] = None
+    """Program return data (if any)."""

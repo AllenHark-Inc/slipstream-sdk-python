@@ -20,6 +20,8 @@ The official Python client for **AllenHark Slipstream**, the high-performance So
 - **Protocol fallback** -- WebSocket with automatic HTTP fallback
 - **Fully async** -- built on `asyncio` and `aiohttp`
 - **Type hints** -- complete type coverage with dataclasses and enums
+- **Atomic bundles** -- submit 2-5 transactions as a Jito-style atomic bundle
+- **Solana RPC proxy** -- 22 Solana JSON-RPC methods proxied through Slipstream (accounts, transactions, tokens, fees, cluster info)
 - **Python 3.9+**
 
 ## Installation
@@ -284,6 +286,51 @@ result = await client.submit_transaction_with_options(tx_bytes, SubmitOptions(
 
 ---
 
+## Atomic Bundles
+
+Submit 2-5 transactions as a Jito-style atomic bundle. All transactions execute sequentially and atomically -- either all land or none do.
+
+### Basic Bundle
+
+```python
+txs = [tx1_bytes, tx2_bytes, tx3_bytes]
+result = await client.submit_bundle(txs)
+print(f"Bundle ID: {result.bundle_id}")
+print(f"Accepted: {result.accepted}")
+for sig in result.signatures:
+    print(f"  Signature: {sig}")
+```
+
+### Bundle with Tip
+
+```python
+# Explicit tip amount in lamports
+result = await client.submit_bundle(txs, tip_lamports=100_000)
+print(f"Sender: {result.sender_id}")
+```
+
+### BundleResult Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `bundle_id` | `str` | Unique bundle identifier |
+| `accepted` | `bool` | Whether the bundle was accepted by the sender |
+| `signatures` | `List[str]` | Transaction signatures (base58) |
+| `sender_id` | `Optional[str]` | Sender that processed the bundle |
+| `error` | `Optional[str]` | Error message if rejected |
+
+### Bundle Constraints
+
+| Constraint | Value |
+|------------|-------|
+| Min transactions | 2 |
+| Max transactions | 5 |
+| Cost | 5 tokens (0.00025 SOL) flat rate per bundle |
+| Execution | Atomic -- all-or-nothing sequential execution |
+| Sender requirement | Must have `supports_bundles` enabled |
+
+---
+
 ## Streaming
 
 Real-time data feeds over WebSocket. Register callbacks with `client.on(event, callback)`, remove with `client.off(event, callback)`. Callbacks can be sync or async.
@@ -535,13 +582,16 @@ Token-based billing system. Paid tiers (Standard/Pro/Enterprise) deduct tokens p
 | Operation | Cost | Notes |
 |-----------|------|-------|
 | Transaction submission | 1 token (0.00005 SOL) | Per transaction sent to Solana |
+| Bundle submission | 5 tokens (0.00025 SOL) | Per bundle (2-5 transactions, flat rate) |
 | Stream subscription | 1 token (0.00005 SOL) | Per stream type; 1-hour reconnect grace period |
 | Webhook delivery | 0.00001 SOL (10,000 lamports) | Per successful POST delivery; retries not charged |
+| RPC query | 1 token (0.00005 SOL) | Per `rpc()` call (`simulate_transaction`, `get_transaction`, etc.) |
+| Bundle simulation | 1 token per TX (0.00005 SOL each) | `simulate_bundle()` calls `simulate_transaction` for each TX |
 | Keep-alive ping | Free | Background ping/pong not billed |
 | Discovery | Free | `GET /v1/discovery` has no auth or billing |
 | Balance/billing queries | Free | `get_balance()`, `get_usage_history()`, etc. |
 | Webhook management | Free | `register_webhook()`, `get_webhook()`, `delete_webhook()` not billed |
-| Free tier daily limit | 100 operations/day | Transactions + stream subs + webhook deliveries all count |
+| Free tier daily limit | 100 operations/day | Transactions + stream subs + webhook deliveries + RPC queries all count |
 
 ### Token Economics
 
@@ -870,6 +920,127 @@ print(f"Valid for: {rec.valid_for_ms}ms")
 | `fallback_regions` | `List[str]` | Fallback regions in priority order |
 | `fallback_strategy` | `FallbackStrategy` | `SEQUENTIAL`, `BROADCAST`, `RETRY`, or `NONE` |
 | `valid_for_ms` | `int` | Time until this recommendation expires (ms) |
+
+---
+
+## Solana RPC Proxy
+
+Slipstream proxies a curated set of Solana JSON-RPC methods through its infrastructure, billed at 1 token per call. This avoids the need for a separate RPC provider for common read operations.
+
+### Generic RPC Call
+
+```python
+# Any supported RPC method
+response = await client.rpc("getLatestBlockhash", [{"commitment": "confirmed"}])
+print(response["result"]["value"]["blockhash"])
+
+# Get transaction details
+tx_info = await client.rpc("getTransaction", [
+    "5K8c...",
+    {"encoding": "jsonParsed", "maxSupportedTransactionVersion": 0},
+])
+```
+
+### Simulate Transaction
+
+```python
+simulation = await client.simulate_transaction(signed_tx_bytes)
+if simulation.err:
+    print(f"Simulation failed: {simulation.err}")
+    print(f"Logs: {simulation.logs}")
+else:
+    print(f"Units consumed: {simulation.units_consumed}")
+```
+
+### Simulate Bundle
+
+Simulates each transaction in a bundle sequentially. Stops on first failure. Costs 1 token per transaction simulated.
+
+```python
+results = await client.simulate_bundle([tx1_bytes, tx2_bytes, tx3_bytes])
+for sim in results:
+    if sim.err:
+        print(f"TX failed: {sim.err}")
+        break
+    print(f"TX OK — {sim.units_consumed} CUs")
+```
+
+### Supported RPC Methods
+
+**Network**
+
+| Method | Description |
+|--------|-------------|
+| `getHealth` | Node health status |
+
+**Cluster**
+
+| Method | Description |
+|--------|-------------|
+| `getSlot` | Get current slot |
+| `getBlockHeight` | Get current block height |
+| `getEpochInfo` | Get epoch info (epoch, slot index, slots remaining) |
+| `getSlotLeaders` | Get scheduled slot leaders |
+
+**Fees**
+
+| Method | Description |
+|--------|-------------|
+| `getLatestBlockhash` | Get latest blockhash |
+| `getFeeForMessage` | Get fee for a serialized message |
+| `getRecentPrioritizationFees` | Get recent prioritization fees |
+
+**Accounts**
+
+| Method | Description |
+|--------|-------------|
+| `getAccountInfo` | Get account data |
+| `getMultipleAccounts` | Get multiple accounts in one call |
+| `getBalance` | Get SOL balance of an account |
+| `getMinimumBalanceForRentExemption` | Get minimum balance for rent exemption |
+
+**Tokens**
+
+| Method | Description |
+|--------|-------------|
+| `getTokenAccountBalance` | Get SPL token account balance |
+| `getTokenSupply` | Get token mint supply |
+| `getSupply` | Get total SOL supply |
+| `getTokenLargestAccounts` | Get largest token accounts |
+
+**Transactions**
+
+| Method | Description |
+|--------|-------------|
+| `sendTransaction` | Submit a signed transaction |
+| `simulateTransaction` | Simulate a transaction without submitting |
+| `getSignatureStatuses` | Check status of transaction signatures |
+| `getTransaction` | Get confirmed transaction details |
+
+**Blocks**
+
+| Method | Description |
+|--------|-------------|
+| `getBlockCommitment` | Get block commitment level |
+| `getFirstAvailableBlock` | Get first available block in ledger |
+
+### SimulationResult Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `err` | `Optional[dict]` | Error if simulation failed, `None` on success |
+| `logs` | `List[str]` | Program log messages |
+| `units_consumed` | `int` | Compute units consumed |
+| `return_data` | `Optional[dict]` | Program return data (if any) |
+
+### RpcResponse Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `jsonrpc` | `str` | Always `"2.0"` |
+| `id` | `int` | Request ID |
+| `result` | `Any` | RPC-method-specific result |
+| `error` | `Optional[dict]` | JSON-RPC error (if any) |
 
 ---
 

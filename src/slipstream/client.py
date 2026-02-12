@@ -62,6 +62,9 @@ from .types import (
     TipInstruction,
     TopUpInfo,
     TransactionResult,
+    RpcError,
+    RpcResponse,
+    SimulationResult,
     UsageEntry,
     WebhookConfig,
 )
@@ -548,3 +551,76 @@ class SlipstreamClient:
         if len(transactions) < 2 or len(transactions) > 5:
             raise ValueError("Bundle must contain 2-5 transactions")
         return await self._http.submit_bundle(transactions, tip_lamports)
+
+    # === Solana RPC Proxy ===
+
+    async def rpc(
+        self,
+        method: str,
+        params: "Optional[list]" = None,
+    ) -> "RpcResponse":
+        """Execute a Solana JSON-RPC call via the Slipstream proxy.
+
+        Costs 1 token (0.00005 SOL) per call. Only methods from the
+        allowlist are supported (simulateTransaction, getTransaction, etc.).
+
+        Args:
+            method: JSON-RPC method name (e.g. "getLatestBlockhash").
+            params: RPC parameters array.
+
+        Returns:
+            Raw JSON-RPC 2.0 response.
+        """
+        return await self._http.rpc(method, params or [])
+
+    async def simulate_transaction(self, transaction: bytes) -> "SimulationResult":
+        """Simulate a transaction without submitting it to the network.
+
+        Costs 1 token. Returns simulation result with logs and compute units.
+
+        Args:
+            transaction: Signed transaction bytes.
+
+        Returns:
+            SimulationResult with err, logs, units_consumed, return_data.
+        """
+        import base64
+        tx_b64 = base64.b64encode(transaction).decode("ascii")
+        response = await self.rpc("simulateTransaction", [
+            tx_b64,
+            {"encoding": "base64", "commitment": "confirmed", "replaceRecentBlockhash": True},
+        ])
+        if response.error:
+            raise Exception(f"RPC error {response.error.code}: {response.error.message}")
+        result = response.result
+        value = result.get("value", result) if isinstance(result, dict) else result
+        if isinstance(value, dict):
+            return SimulationResult(
+                err=value.get("err"),
+                logs=value.get("logs", []),
+                units_consumed=value.get("unitsConsumed", 0),
+                return_data=value.get("returnData"),
+            )
+        return SimulationResult()
+
+    async def simulate_bundle(
+        self,
+        transactions: "List[bytes]",
+    ) -> "List[SimulationResult]":
+        """Simulate each transaction in a bundle sequentially.
+
+        Costs 1 token per transaction simulated. Stops on first failure.
+
+        Args:
+            transactions: List of signed transaction bytes.
+
+        Returns:
+            List of SimulationResult (one per transaction attempted).
+        """
+        results: list = []
+        for tx in transactions:
+            sim = await self.simulate_transaction(tx)
+            results.append(sim)
+            if sim.err is not None:
+                break
+        return results

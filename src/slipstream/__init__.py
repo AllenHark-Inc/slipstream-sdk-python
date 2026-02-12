@@ -74,6 +74,7 @@ from .types import (
     TransactionResult,
     TransactionStatus,
     SubmitOptions,
+    RetryOptions,
     RoutingInfo,
     TransactionError,
     # Token billing types
@@ -108,6 +109,10 @@ from .types import (
     LandingRateOptions,
     # Bundle types
     BundleResult,
+    # RPC proxy types
+    RpcResponse,
+    RpcError,
+    SimulationResult,
 )
 
 __all__ = [
@@ -147,6 +152,7 @@ __all__ = [
     "TransactionResult",
     "TransactionStatus",
     "SubmitOptions",
+    "RetryOptions",
     "RoutingInfo",
     "TransactionError",
     "Balance",
@@ -174,4 +180,7 @@ __all__ = [
     "RegionLandingRate",
     "LandingRateOptions",
     "BundleResult",
+    "RpcResponse",
+    "RpcError",
+    "SimulationResult",
 ]

@@ -398,6 +398,30 @@ class HttpTransport:
             error=data.get("error"),
         )
 
+    async def rpc(self, method: str, params: list) -> "RpcResponse":
+        """Execute a Solana JSON-RPC call via the Slipstream proxy."""
+        from .types import RpcResponse, RpcError
+        data = await self._request("POST", "/v1/rpc", body={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params,
+        })
+        error = None
+        if data.get("error"):
+            err = data["error"]
+            error = RpcError(
+                code=err.get("code", 0),
+                message=err.get("message", ""),
+                data=err.get("data"),
+            )
+        return RpcResponse(
+            jsonrpc=data.get("jsonrpc", "2.0"),
+            id=data.get("id", 1),
+            result=data.get("result"),
+            error=error,
+        )
+
 
 # =============================================================================
 # Helpers
