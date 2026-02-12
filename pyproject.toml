@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "AllenHarkSlipstream"
-version = "0.1.0"
+version = "0.1.1"
 description = "Slipstream client SDK for Python - Solana transaction relay"
 readme = "README.md"
 requires-python = ">=3.9"
