@@ -25,6 +25,9 @@ dev = [
 [project.urls]
 Repository = "https://github.com/AllenHark-Inc/slipstream-sdk-python"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/slipstream"]
+
 [tool.ruff]
 target-version = "py39"
 line-length = 100
