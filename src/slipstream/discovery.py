@@ -24,7 +24,7 @@ from .types import (
 
 logger = logging.getLogger("slipstream.discovery")
 
-DEFAULT_DISCOVERY_URL = "https://discovery.slipstream.allenhark.com"
+DEFAULT_DISCOVERY_URL = "https://discovery.allenhark.network"
 
 
 async def discover(discovery_url: str) -> DiscoveryResponse:

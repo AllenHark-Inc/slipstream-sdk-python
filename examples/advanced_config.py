@@ -31,7 +31,7 @@ async def main() -> None:
         # .endpoint("http://worker-ip:9000")
 
         # Custom discovery URL (optional -- default is production)
-        # .discovery_url("https://discovery.slipstream.allenhark.com")
+        # .discovery_url("https://discovery.allenhark.network")
 
         # Connection settings
         .connection_timeout(10_000)  # 10 seconds

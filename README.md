@@ -82,7 +82,7 @@ config = (
 | `api_key(key)` | `str` | **required** | API key (must start with `sk_`) |
 | `region(region)` | `str` | `None` | Preferred region (e.g., `"us-east"`, `"eu-central"`) |
 | `endpoint(url)` | `str` | `None` | Override discovery with explicit worker endpoint |
-| `discovery_url(url)` | `str` | `https://discovery.slipstream.allenhark.com` | Custom discovery service URL |
+| `discovery_url(url)` | `str` | `https://discovery.allenhark.network` | Custom discovery service URL |
 | `tier(tier)` | `BillingTier` | `BillingTier.PRO` | Billing tier: `FREE`, `STANDARD`, `PRO`, `ENTERPRISE` |
 | `connection_timeout(ms)` | `int` | `10000` | Connection timeout in milliseconds |
 | `max_retries(n)` | `int` | `3` | Maximum retry attempts for failed requests |
