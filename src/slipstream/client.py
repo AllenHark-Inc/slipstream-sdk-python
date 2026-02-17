@@ -112,7 +112,7 @@ class TimeSyncManager:
                     if on_result:
                         on_result(result)
                 except Exception:
-                    pass
+                    logger.debug("Time sync ping failed", exc_info=True)
 
         self._task = asyncio.create_task(loop())
 

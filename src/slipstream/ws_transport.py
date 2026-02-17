@@ -292,7 +292,7 @@ class WebSocketTransport:
                         data = json.loads(msg.data)
                         self._handle_message(data)
                     except json.JSONDecodeError:
-                        pass
+                        logger.warning("Received malformed JSON message from WebSocket")
                 elif msg.type in (
                     aiohttp.WSMsgType.CLOSED,
                     aiohttp.WSMsgType.ERROR,
@@ -323,7 +323,7 @@ class WebSocketTransport:
                 try:
                     await self.ping()
                 except Exception:
-                    pass  # Ping failed, continue
+                    logger.debug("Heartbeat ping failed", exc_info=True)
 
     def _handle_message(self, msg: Dict[str, Any]) -> None:
         msg_type = msg.get("type", "")

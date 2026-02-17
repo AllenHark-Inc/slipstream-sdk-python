@@ -160,6 +160,7 @@ class MultiRegionClient:
                 try:
                     return await self._submit_to_region(fb, transaction, options)
                 except Exception:
+                    logger.debug("Fallback region %s failed", fb, exc_info=True)
                     continue
             raise first_err
 

@@ -7,11 +7,14 @@ Pings available workers and selects the lowest-latency endpoint.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import aiohttp
+
+logger = logging.getLogger("slipstream.worker_selector")
 
 from .errors import SlipstreamError
 from .types import WorkerEndpoint
@@ -135,6 +138,7 @@ class WorkerSelector:
                         rtt_ms=rtt, measured_at=time.time(), reachable=True
                     )
         except Exception:
+            logger.debug("Worker health check failed for %s", endpoint, exc_info=True)
             return LatencyMeasurement(
                 rtt_ms=float("inf"), measured_at=time.time(), reachable=False
             )
