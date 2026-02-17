@@ -56,6 +56,7 @@ from .types import (
     PerformanceMetrics,
     PingResult,
     PriorityFee,
+    RegionInfo,
     RoutingRecommendation,
     SlipstreamConfig,
     SubmitOptions,
@@ -422,6 +423,14 @@ class SlipstreamClient:
 
     async def get_routing_recommendation(self) -> RoutingRecommendation:
         return await self._http.get_routing_recommendation()
+
+    async def get_regions(self) -> "List[RegionInfo]":
+        """Get all configured regions.
+
+        Returns a list of regions with their IDs, display names, endpoints,
+        and geolocation coordinates. This endpoint does not require authentication.
+        """
+        return await self._http.get_regions()
 
     # =========================================================================
     # Token Billing
