@@ -38,9 +38,11 @@ async def main() -> None:
     # Tip instructions tell you the best sender and tip wallet
     def on_tip(tip: TipInstruction) -> None:
         print(f"[Tip] sender={tip.sender_name} wallet={tip.tip_wallet_address} "
-              f"amount={tip.tip_amount_sol} SOL tier={tip.tip_tier}")
+              f"amount={tip.tip_amount_sol} SOL tier={tip.tip_tier} "
+              f"latency={tip.expected_latency_ms}ms confidence={tip.confidence}% "
+              f"valid_until={tip.valid_until_slot}")
         for alt in tip.alternative_senders:
-            print(f"  alt: {alt.sender} @ {alt.tip_amount_sol} SOL")
+            print(f"  alt: {alt.sender} @ {alt.tip_amount_sol} SOL ({alt.confidence}%)")
 
     # Priority fees update every ~1 second
     def on_fee(fee: PriorityFee) -> None:
