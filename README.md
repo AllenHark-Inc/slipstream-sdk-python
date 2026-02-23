@@ -286,6 +286,42 @@ result = await client.submit_transaction_with_options(tx_bytes, SubmitOptions(
 
 ---
 
+## Sender Discovery
+
+Fetch the list of configured senders with their tip wallets and pricing tiers.
+This is essential for building transactions in both broadcast and streaming modes.
+
+### Get Available Senders
+
+```python
+senders = await client.get_senders()
+
+for sender in senders:
+    print(f"{sender.display_name} ({sender.sender_id})")
+    print(f"  Tip wallets: {sender.tip_wallets}")
+    for tier in sender.tip_tiers:
+        print(f"  {tier.name}: {tier.amount_sol} SOL (~{tier.expected_latency_ms}ms)")
+```
+
+### SenderInfo Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sender_id` | `str` | Sender identifier (e.g., `"nozomi"`, `"0slot"`) |
+| `display_name` | `str` | Human-readable name |
+| `tip_wallets` | `List[str]` | Solana wallet addresses for tips |
+| `tip_tiers` | `List[TipTier]` | Pricing tiers with speed/cost tradeoffs |
+
+### TipTier Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `str` | Tier name (e.g., `"standard"`, `"fast"`, `"ultra_fast"`) |
+| `amount_sol` | `float` | Tip amount in SOL |
+| `expected_latency_ms` | `int` | Expected submission latency in milliseconds |
+
+---
+
 ## Atomic Bundles
 
 Submit 2-5 transactions as a Jito-style atomic bundle. All transactions execute sequentially and atomically -- either all land or none do.
