@@ -454,6 +454,19 @@ class SlipstreamClient:
         return self._latest_tip
 
     # =========================================================================
+    # Ping / Time Sync
+    # =========================================================================
+
+    async def ping(self) -> PingResult:
+        """Send a ping and measure round-trip time and clock offset.
+
+        Uses WebSocket if connected, otherwise raises.
+        """
+        if self._ws.is_connected():
+            return await self._ws.ping()
+        raise SlipstreamError.not_connected()
+
+    # =========================================================================
     # Connection Status
     # =========================================================================
 
