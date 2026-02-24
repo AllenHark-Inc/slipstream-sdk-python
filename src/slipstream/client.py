@@ -37,8 +37,9 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from .config import get_http_endpoint, get_ws_endpoint
-from .discovery import discover, best_region, workers_for_region
+from .discovery import discover, best_region, workers_for_region, workers_to_endpoints
 from .errors import SlipstreamError
+from .worker_selector import WorkerSelector
 from .http_transport import HttpTransport
 from .types import (
     Balance,
@@ -218,7 +219,8 @@ class SlipstreamClient:
 
         If no explicit endpoint is set, the SDK automatically discovers
         available workers via the discovery service, selects the best
-        worker, and connects directly to its IP address.
+        worker by latency, and connects directly to its IP address.
+        Falls through to the next-best worker if connection fails.
         """
         # If no explicit endpoint, use discovery to find a worker
         if not config.endpoint:
@@ -235,33 +237,68 @@ class SlipstreamClient:
                     f"No healthy workers in region '{region}'"
                 )
 
-            worker = workers[0]
-            logger.info(
-                "Selected worker %s in %s (ip=%s)", worker.id, region, worker.ip
-            )
-            config = SlipstreamConfig(
-                api_key=config.api_key,
-                region=region,
-                endpoint=f"http://{worker.ip}:{worker.ports.http}",
-                discovery_url=config.discovery_url,
-                tier=config.tier,
-                connection_timeout=config.connection_timeout,
-                max_retries=config.max_retries,
-                leader_hints=config.leader_hints,
-                stream_tip_instructions=config.stream_tip_instructions,
-                stream_priority_fees=config.stream_priority_fees,
-                stream_latest_blockhash=config.stream_latest_blockhash,
-                stream_latest_slot=config.stream_latest_slot,
-                protocol_timeouts=config.protocol_timeouts,
-                priority_fee=config.priority_fee,
-                retry_backoff=config.retry_backoff,
-                min_confidence=config.min_confidence,
-                idle_timeout=config.idle_timeout,
-                webhook_url=config.webhook_url,
-                webhook_events=config.webhook_events,
-                webhook_notification_level=config.webhook_notification_level,
+            # Convert to endpoints and rank by latency
+            endpoints = workers_to_endpoints(workers)
+            selector = WorkerSelector(endpoints)
+            rtts = await selector.measure_all()
+
+            # Sort by RTT (lowest first), unreachable at end
+            ranked = sorted(
+                endpoints,
+                key=lambda w: rtts.get(w.id, float("inf")),
             )
 
+            logger.info(
+                "Ranked %d workers by latency in region %s (best: %s)",
+                len(ranked), region, ranked[0].id,
+            )
+
+            # Try workers in latency order — fall to next on complete failure
+            last_error: Optional[Exception] = None
+            for i, worker in enumerate(ranked):
+                logger.info(
+                    "Trying worker %s (%d/%d)", worker.id, i + 1, len(ranked)
+                )
+                worker_config = SlipstreamConfig(
+                    api_key=config.api_key,
+                    region=region,
+                    endpoint=worker.http,
+                    discovery_url=config.discovery_url,
+                    tier=config.tier,
+                    connection_timeout=config.connection_timeout,
+                    max_retries=config.max_retries,
+                    leader_hints=config.leader_hints,
+                    stream_tip_instructions=config.stream_tip_instructions,
+                    stream_priority_fees=config.stream_priority_fees,
+                    stream_latest_blockhash=config.stream_latest_blockhash,
+                    stream_latest_slot=config.stream_latest_slot,
+                    protocol_timeouts=config.protocol_timeouts,
+                    priority_fee=config.priority_fee,
+                    retry_backoff=config.retry_backoff,
+                    min_confidence=config.min_confidence,
+                    idle_timeout=config.idle_timeout,
+                    webhook_url=config.webhook_url,
+                    webhook_events=config.webhook_events,
+                    webhook_notification_level=config.webhook_notification_level,
+                )
+                try:
+                    return await SlipstreamClient._try_connect(worker_config)
+                except Exception as e:
+                    logger.warning(
+                        "Worker %s connection failed: %s, trying next", worker.id, e
+                    )
+                    last_error = e
+
+            raise last_error or SlipstreamError.connection(
+                f"All workers in region '{region}' rejected connection"
+            )
+
+        # Explicit endpoint set — connect directly
+        return await SlipstreamClient._try_connect(config)
+
+    @staticmethod
+    async def _try_connect(config: SlipstreamConfig) -> SlipstreamClient:
+        """Attempt connection to a single worker endpoint using WS → HTTP fallback."""
         client = SlipstreamClient(config)
 
         try:
