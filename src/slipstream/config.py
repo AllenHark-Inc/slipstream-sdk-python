@@ -188,7 +188,13 @@ def get_http_endpoint(config: SlipstreamConfig) -> str:
 
 
 def get_ws_endpoint(config: SlipstreamConfig) -> str:
-    """Get the WebSocket URL from config."""
+    """Get the WebSocket URL from config.
+
+    Uses explicit ws_endpoint if set (from discovery with separate WS port),
+    otherwise derives from the HTTP endpoint.
+    """
+    if config.ws_endpoint:
+        return config.ws_endpoint
     if config.endpoint:
         http_url = config.endpoint.rstrip("/")
         ws_url = http_url.replace("https://", "wss://").replace("http://", "ws://")

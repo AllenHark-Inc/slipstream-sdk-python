@@ -263,6 +263,7 @@ class SlipstreamClient:
                     api_key=config.api_key,
                     region=region,
                     endpoint=worker.http,
+                    ws_endpoint=worker.websocket,
                     discovery_url=config.discovery_url,
                     tier=config.tier,
                     connection_timeout=config.connection_timeout,

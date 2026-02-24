@@ -52,6 +52,7 @@ class SlipstreamConfig:
     api_key: str
     region: Optional[str] = None
     endpoint: Optional[str] = None
+    ws_endpoint: Optional[str] = None
     discovery_url: str = "https://discovery.allenhark.network"
     tier: BillingTier = BillingTier.PRO
     connection_timeout: int = 10_000
