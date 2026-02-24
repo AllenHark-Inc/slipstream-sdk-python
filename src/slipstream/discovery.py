@@ -57,6 +57,7 @@ async def discover(discovery_url: str) -> DiscoveryResponse:
             name=r.get("name", ""),
             lat=r.get("lat"),
             lon=r.get("lon"),
+            leader_rtt_ms=r.get("leader_rtt_ms"),
         )
         for r in data.get("regions", [])
     ]

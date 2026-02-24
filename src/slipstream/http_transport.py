@@ -23,6 +23,7 @@ from .types import (
     RoutingRecommendation,
     SenderInfo,
     SubmitOptions,
+    TipInstruction,
     TipTier,
     TopUpInfo,
     TransactionResult,
@@ -238,6 +239,34 @@ class HttpTransport:
                     confidence=50,
                 )
             raise
+
+    # =========================================================================
+    # Tip Instructions
+    # =========================================================================
+
+    async def get_tip_instructions(self) -> List[TipInstruction]:
+        """Fetch current tip instructions from the worker."""
+        try:
+            raw = await self._request("GET", "/v1/tip-instructions")
+        except Exception:
+            return []
+        if not isinstance(raw, list):
+            return []
+        tips = []
+        for r in raw:
+            tips.append(TipInstruction(
+                timestamp=r.get("timestamp", 0),
+                sender=r.get("sender_id", ""),
+                sender_name=r.get("sender_id", ""),
+                tip_wallet_address=r.get("tip_wallet", ""),
+                tip_amount_sol=r.get("tip_amount_lamports", 0) / 1_000_000_000,
+                tip_tier=r.get("tier", "standard"),
+                expected_latency_ms=r.get("expected_latency_ms", 0),
+                confidence=r.get("confidence", 0),
+                valid_until_slot=r.get("valid_until_slot", 0),
+                alternative_senders=[],
+            ))
+        return tips
 
     # =========================================================================
     # Config

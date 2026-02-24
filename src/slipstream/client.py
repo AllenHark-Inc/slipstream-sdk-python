@@ -328,19 +328,33 @@ class SlipstreamClient:
             )
             client._connected = True
 
-        # Auto-register webhook if configured
+        # Auto-register webhook and fetch initial tip concurrently
+        tasks = [client._fetch_initial_tip()]
         if config.webhook_url:
-            try:
-                await client.register_webhook(
-                    config.webhook_url,
-                    config.webhook_events,
-                    config.webhook_notification_level,
-                )
-                logger.info("Webhook auto-registered at %s", config.webhook_url)
-            except Exception:
-                logger.debug("Failed to auto-register webhook", exc_info=True)
+            tasks.append(client._auto_register_webhook())
+        await asyncio.gather(*tasks, return_exceptions=True)
 
         return client
+
+    async def _auto_register_webhook(self) -> None:
+        try:
+            await self.register_webhook(
+                self._config.webhook_url,
+                self._config.webhook_events,
+                self._config.webhook_notification_level,
+            )
+            logger.info("Webhook auto-registered at %s", self._config.webhook_url)
+        except Exception:
+            logger.debug("Failed to auto-register webhook", exc_info=True)
+
+    async def _fetch_initial_tip(self) -> None:
+        """Eagerly fetch tip instructions so get_latest_tip() works after connect()."""
+        try:
+            tips = await self._http.get_tip_instructions()
+            if tips:
+                self._latest_tip = tips[-1]
+        except Exception:
+            pass  # Non-fatal — tip will be populated by streaming later
 
     def connection_info(self) -> ConnectionInfo:
         if not self._connection_info:

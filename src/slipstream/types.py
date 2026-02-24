@@ -403,6 +403,7 @@ class DiscoveryRegion:
     name: str = ""
     lat: Optional[float] = None
     lon: Optional[float] = None
+    leader_rtt_ms: Optional[float] = None
 
 
 @dataclass
