@@ -1175,6 +1175,12 @@ except SlipstreamError as e:
 | [`examples/priority_fees.py`](examples/priority_fees.py) | Priority fee configuration and monitoring |
 | [`examples/deduplication.py`](examples/deduplication.py) | Deduplication patterns |
 
+## Contact
+
+- Website: https://allenhark.com
+- Contact: https://allenhark.com/contact
+- Discord: https://discord.gg/JpzS72MAKG
+
 ## License
 
 Apache-2.0

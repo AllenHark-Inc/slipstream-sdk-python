@@ -343,8 +343,13 @@ class WebSocketTransport:
         elif msg_type == "latest_slot":
             self._emit("latest_slot", _parse_latest_slot(msg))
 
+        elif msg_type == "transaction_accepted":
+            # Ack only — do NOT resolve the pending future; wait for a
+            # terminal message (update/confirmed/failed) that carries data.
+            result = _parse_transaction_result_ws(msg)
+            self._emit("transaction_update", result)
+
         elif msg_type in (
-            "transaction_accepted",
             "transaction_update",
             "transaction_confirmed",
             "transaction_failed",
@@ -492,9 +497,10 @@ def _parse_transaction_result_ws(msg: Dict[str, Any]) -> TransactionResult:
 
     routing = None
     if routing_data:
+        # Worker sends `region`/`sender`, CP sends `selected_region`/`selected_sender`
         routing = RoutingInfo(
-            region=routing_data.get("region", ""),
-            sender=routing_data.get("sender", ""),
+            region=routing_data.get("region") or routing_data.get("selected_region", ""),
+            sender=routing_data.get("sender") or routing_data.get("selected_sender", ""),
             routing_latency_ms=routing_data.get("routing_latency_ms", 0),
             sender_latency_ms=routing_data.get("sender_latency_ms", 0),
             total_latency_ms=routing_data.get("total_latency_ms", 0),
@@ -508,12 +514,23 @@ def _parse_transaction_result_ws(msg: Dict[str, Any]) -> TransactionResult:
             details=error_data.get("details"),
         )
 
+    slot_sent = msg.get("slot_sent")
+    msg_type = msg.get("type", "")
+    slot_landed = msg.get("slot") if msg_type == "transaction_confirmed" else None
+    slot_delta = None
+    if slot_sent is not None and slot_landed is not None and slot_landed >= slot_sent:
+        slot_delta = slot_landed - slot_sent
+
     return TransactionResult(
         request_id=msg.get("request_id", ""),
         transaction_id=msg.get("transaction_id", ""),
         signature=msg.get("signature"),
         status=msg.get("status", "pending"),
         slot=msg.get("slot"),
+        slot_sent=slot_sent,
+        slot_accepted=msg.get("slot_accepted"),
+        slot_landed=slot_landed,
+        slot_delta=slot_delta,
         timestamp=msg.get("timestamp", 0),
         routing=routing,
         error=error,

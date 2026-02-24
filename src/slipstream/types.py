@@ -250,6 +250,14 @@ class TransactionResult:
     signature: Optional[str] = None
     status: str = "pending"
     slot: Optional[int] = None
+    slot_sent: Optional[int] = None
+    """Slot when transaction was sent to the sender."""
+    slot_accepted: Optional[int] = None
+    """Slot when the sender acknowledged acceptance."""
+    slot_landed: Optional[int] = None
+    """Slot where transaction landed on-chain (if confirmed)."""
+    slot_delta: Optional[int] = None
+    """Difference between landed slot and sent slot."""
     timestamp: int = 0
     routing: Optional[RoutingInfo] = None
     error: Optional[TransactionError] = None
