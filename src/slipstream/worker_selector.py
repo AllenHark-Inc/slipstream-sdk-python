@@ -132,7 +132,7 @@ class WorkerSelector:
 
         try:
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.head(f"{endpoint}/management/health"):
+                async with session.head(f"{endpoint}/health"):
                     rtt = (time.time() - start) * 1000
                     return LatencyMeasurement(
                         rtt_ms=rtt, measured_at=time.time(), reachable=True
