@@ -263,6 +263,7 @@ class WebSocketTransport:
                     "preferredSender": opts.preferred_sender,
                     "maxRetries": opts.max_retries,
                     "timeoutMs": opts.timeout_ms,
+                    "tpuSubmission": opts.tpu_submission,
                 },
             }
         )

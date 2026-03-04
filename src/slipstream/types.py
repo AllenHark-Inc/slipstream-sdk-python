@@ -241,6 +241,10 @@ class SubmitOptions:
     dedup_id: Optional[str] = None
     retry: Optional[RetryOptions] = None
     """Retry policy (overrides max_retries with more control)"""
+    tpu_submission: bool = False
+    """Send directly to validator TPU ports via UDP (bypasses senders).
+    Billed at 0.0001 SOL per transaction. Fire-and-forget — no sender
+    acknowledgment. Use standard confirmation polling to check landing."""
 
 
 @dataclass

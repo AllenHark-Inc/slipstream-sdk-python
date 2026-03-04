@@ -107,6 +107,7 @@ class HttpTransport:
                     "preferred_sender": opts.preferred_sender,
                     "max_retries": opts.max_retries,
                     "timeout_ms": opts.timeout_ms,
+                    "tpu_submission": opts.tpu_submission,
                 },
             },
         )
