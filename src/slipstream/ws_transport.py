@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import time
+import uuid
 from typing import Any, Callable, Dict, List, Optional, Set
 
 import aiohttp
@@ -243,8 +244,7 @@ class WebSocketTransport:
         import base64
 
         opts = options or SubmitOptions()
-        self._request_id_counter += 1
-        request_id = f"req_{self._request_id_counter}_{int(time.time() * 1000)}"
+        request_id = str(uuid.uuid4())
 
         base64_tx = base64.b64encode(transaction).decode("ascii")
 
