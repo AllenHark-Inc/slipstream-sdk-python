@@ -262,6 +262,16 @@ class TransactionResult:
     """Slot where transaction landed on-chain (if confirmed)."""
     slot_delta: Optional[int] = None
     """Difference between landed slot and sent slot."""
+    commitment_level: Optional[str] = None
+    """Solana commitment level: 'processed' | 'confirmed' | 'finalized'."""
+    confirmations: Optional[int] = None
+    """Number of cluster confirmations (None once finalized)."""
+    slot_processed: Optional[int] = None
+    """Slot at which transaction reached 'processed' commitment."""
+    slot_confirmed: Optional[int] = None
+    """Slot at which transaction reached 'confirmed' commitment."""
+    slot_finalized: Optional[int] = None
+    """Slot at which transaction reached 'finalized' commitment."""
     timestamp: int = 0
     routing: Optional[RoutingInfo] = None
     error: Optional[TransactionError] = None
