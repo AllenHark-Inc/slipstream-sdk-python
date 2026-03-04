@@ -4,7 +4,7 @@
 
 The official Python client for **AllenHark Slipstream**, the high-performance Solana transaction relay and intelligence network.
 
-[![PyPI](https://img.shields.io/pypi/v/allenhark-slipstream.svg)](https://pypi.org/project/allenhark-slipstream/)
+[![PyPI](https://img.shields.io/pypi/v/AllenHarkSlipstream.svg)](https://pypi.org/project/AllenHarkSlipstream/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 ## Features
@@ -27,7 +27,7 @@ The official Python client for **AllenHark Slipstream**, the high-performance So
 ## Installation
 
 ```bash
-pip install allenhark-slipstream
+pip install AllenHarkSlipstream
 ```
 
 ## Quick Start
