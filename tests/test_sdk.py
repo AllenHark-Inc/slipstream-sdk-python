@@ -403,11 +403,11 @@ class TestTypeStructures:
             max_retries=5,
             timeout_ms=60_000,
             dedup_id="dedup-123",
-            retry=RetryOptions(max_retries=3, backoff_base_ms=200, cross_sender_retry=True),
+            retry=RetryOptions(max_retries=3, backoff_base_ms=200),
         )
         assert opts.broadcast_mode is True
         assert opts.retry is not None
-        assert opts.retry.cross_sender_retry is True
+        assert opts.retry.max_retries == 3
 
     def test_bundle_result(self):
         result = BundleResult(

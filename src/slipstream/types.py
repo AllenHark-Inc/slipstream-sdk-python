@@ -228,8 +228,6 @@ class RetryOptions:
     """Maximum number of retry attempts (default: 2)"""
     backoff_base_ms: int = 100
     """Base backoff delay in milliseconds (default: 100ms, exponential with jitter)"""
-    cross_sender_retry: bool = False
-    """Whether to retry with a different sender on failure (default: False)"""
 
 
 @dataclass
