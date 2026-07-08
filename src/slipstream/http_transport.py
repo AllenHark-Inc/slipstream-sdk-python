@@ -7,7 +7,7 @@ Uses aiohttp for all REST API calls.
 from __future__ import annotations
 
 import base64
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar
 
 import aiohttp
 
@@ -33,13 +33,33 @@ from .types import (
 
 
 class HttpTransport:
-    """HTTP REST transport using aiohttp."""
+    """HTTP REST transport using aiohttp.
 
-    def __init__(self, base_url: str, api_key: str, timeout_ms: int = 10_000) -> None:
+    Prefers ``base_url``; falls back ONCE to ``legacy_base_url`` (if given)
+    when a request fails with a connect/transport error. A successful
+    request against the primary URL never attempts the legacy URL. No
+    legacy URL ⇒ single attempt, unchanged behavior.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        timeout_ms: int = 10_000,
+        legacy_base_url: Optional[str] = None,
+    ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._legacy_base_url = (
+            legacy_base_url.rstrip("/") if legacy_base_url else None
+        )
         self._api_key = api_key
         self._timeout = aiohttp.ClientTimeout(total=timeout_ms / 1000)
         self._session: Optional[aiohttp.ClientSession] = None
+
+    def _targets(self) -> List[str]:
+        if self._legacy_base_url and self._legacy_base_url != self._base_url:
+            return [self._base_url, self._legacy_base_url]
+        return [self._base_url]
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -65,26 +85,29 @@ class HttpTransport:
         params: Optional[Dict[str, str]] = None,
     ) -> Any:
         session = await self._ensure_session()
-        url = f"{self._base_url}{path}"
 
-        try:
-            async with session.request(method, url, json=body, params=params) as resp:
-                if resp.status == 401:
-                    raise SlipstreamError.auth("Invalid API key")
-                if resp.status == 429:
-                    raise SlipstreamError.rate_limited()
-                if not (200 <= resp.status < 300):
-                    error_text = await resp.text()
-                    raise SlipstreamError.internal(
-                        f"HTTP {resp.status}: {error_text or resp.reason}"
-                    )
-                return await resp.json()
-        except SlipstreamError:
-            raise
-        except aiohttp.ClientError as e:
-            raise SlipstreamError.connection(f"HTTP request failed: {e}") from e
-        except Exception as e:
-            raise SlipstreamError.connection(f"HTTP request failed: {e}") from e
+        async def attempt(base_url: str) -> Any:
+            url = f"{base_url}{path}"
+            try:
+                async with session.request(method, url, json=body, params=params) as resp:
+                    if resp.status == 401:
+                        raise SlipstreamError.auth("Invalid API key")
+                    if resp.status == 429:
+                        raise SlipstreamError.rate_limited()
+                    if not (200 <= resp.status < 300):
+                        error_text = await resp.text()
+                        raise SlipstreamError.internal(
+                            f"HTTP {resp.status}: {error_text or resp.reason}"
+                        )
+                    return await resp.json()
+            except SlipstreamError:
+                raise
+            except aiohttp.ClientError as e:
+                raise SlipstreamError.connection(f"HTTP request failed: {e}") from e
+            except Exception as e:
+                raise SlipstreamError.connection(f"HTTP request failed: {e}") from e
+
+        return await _try_targets(self._targets(), attempt)
 
     # =========================================================================
     # Transaction
@@ -451,6 +474,69 @@ class HttpTransport:
             result=data.get("result"),
             error=error,
         )
+
+
+# =============================================================================
+# Legacy-port connect fallback
+# =============================================================================
+#
+# Shared "prefer-primary / single-legacy-fallback" connect semantics used by
+# every transport that dials a worker endpoint (HTTP, WebSocket). Mirrors the
+# Rust SDK's `client-sdk/rust/src/connection/mod.rs` and the TypeScript SDK's
+# `client-sdk/typescript/src/transport/fallback.ts` behavior:
+#
+# - The PRIMARY target is tried first. On success, no other target is ever
+#   attempted.
+# - If (and only if) the primary attempt fails with a *connect/transport*
+#   error — connection refused, DNS failure, transport-establishment error,
+#   or a connect timeout — the LEGACY target (if one exists) is tried
+#   exactly once.
+# - Application errors (auth rejection, protocol/validation errors, rate
+#   limiting, etc.) are surfaced immediately and never trigger a fallback,
+#   since they would fail identically against the legacy port.
+# - No legacy target present ⇒ single attempt, error surfaced unchanged
+#   (today's behavior, byte-for-byte).
+
+T = TypeVar("T")
+
+
+def _is_connect_failure(err: BaseException) -> bool:
+    """Classify whether an error is a connect/transport-establishment
+    failure (worth retrying against a different endpoint) versus an
+    application error, which must NOT trigger a legacy-port fallback.
+    """
+    return isinstance(err, SlipstreamError) and err.code in ("CONNECTION", "TIMEOUT")
+
+
+async def _try_targets(
+    targets: List[str], attempt: Callable[[str], Awaitable[T]]
+) -> T:
+    """Attempt ``attempt`` against each target in order, returning the first
+    success. Only proceeds to the next target when the previous attempt
+    failed with a connect/transport error (see :func:`_is_connect_failure`);
+    any other error — or a failure on the final target — is raised
+    immediately.
+
+    A successful attempt on an earlier target means ``attempt`` is never
+    invoked for any subsequent target.
+    """
+    if not targets:
+        raise SlipstreamError.connection("No connect targets available")
+
+    last_error: Optional[BaseException] = None
+    for i, target in enumerate(targets):
+        try:
+            return await attempt(target)
+        except Exception as e:  # noqa: BLE001 - re-raised below when not retryable
+            last_error = e
+            is_last_target = i == len(targets) - 1
+            if is_last_target or not _is_connect_failure(e):
+                raise
+
+    # Unreachable — the loop above always returns or raises — but keeps
+    # type checkers happy and guards against future refactors.
+    assert last_error is not None
+    raise last_error
 
 
 # =============================================================================

@@ -51,6 +51,26 @@ async def discover(discovery_url: str) -> DiscoveryResponse:
     except aiohttp.ClientError as e:
         raise SlipstreamError.connection(f"Discovery request failed: {e}") from e
 
+    response = parse_discovery_response(data)
+
+    logger.info(
+        "Discovery complete: %d regions, %d workers, recommended=%s",
+        len(response.regions),
+        len(response.workers),
+        response.recommended_region,
+    )
+
+    return response
+
+
+def parse_discovery_response(data: dict) -> DiscoveryResponse:
+    """Parse a raw discovery JSON payload (as returned by ``GET /v1/discovery``)
+    into a :class:`DiscoveryResponse`.
+
+    Pulled out of :func:`discover` so the parsing logic — in particular the
+    backward-compatible handling of the optional ``legacy_*`` port fields —
+    can be exercised directly against a plain dict, without a network call.
+    """
     regions = [
         DiscoveryRegion(
             id=r.get("id", ""),
@@ -71,19 +91,20 @@ async def discover(discovery_url: str) -> DiscoveryResponse:
                 quic=w.get("ports", {}).get("quic", 4433),
                 ws=w.get("ports", {}).get("ws", 9000),
                 http=w.get("ports", {}).get("http", 9000),
+                grpc=w.get("ports", {}).get("grpc", 10000),
+                # Legacy ports are only advertised during a port migration.
+                # `.get(key, None)` keeps this backward-compatible: an old
+                # control plane that omits these keys entirely yields None,
+                # not a default port.
+                legacy_quic=w.get("ports", {}).get("legacy_quic", None),
+                legacy_grpc=w.get("ports", {}).get("legacy_grpc", None),
+                legacy_ws=w.get("ports", {}).get("legacy_ws", None),
             ),
             healthy=w.get("healthy", False),
             version=w.get("version"),
         )
         for w in data.get("workers", [])
     ]
-
-    logger.info(
-        "Discovery complete: %d regions, %d workers, recommended=%s",
-        len(regions),
-        len(workers),
-        data.get("recommended_region"),
-    )
 
     return DiscoveryResponse(
         regions=regions,
@@ -94,16 +115,81 @@ async def discover(discovery_url: str) -> DiscoveryResponse:
 
 def workers_to_endpoints(workers: List[DiscoveryWorker]) -> List[WorkerEndpoint]:
     """Convert discovery workers to SDK WorkerEndpoints. Only healthy workers."""
-    return [
-        WorkerEndpoint(
-            id=w.id,
-            region=w.region,
-            websocket=f"ws://{w.ip}:{w.ports.ws}/ws",
-            http=f"http://{w.ip}:{w.ports.http}",
+    endpoints = []
+    for w in workers:
+        if not w.healthy:
+            continue
+
+        # Legacy fallback endpoints — only present during a port migration.
+        # Built with the same URL shape as their primary counterparts so the
+        # connect path can dial them transparently.
+        legacy_quic = (
+            f"quic://{w.ip}:{w.ports.legacy_quic}"
+            if w.ports.legacy_quic is not None
+            else None
         )
-        for w in workers
-        if w.healthy
-    ]
+        legacy_grpc = (
+            f"http://{w.ip}:{w.ports.legacy_grpc}"
+            if w.ports.legacy_grpc is not None
+            else None
+        )
+        legacy_websocket = (
+            f"ws://{w.ip}:{w.ports.legacy_ws}/ws"
+            if w.ports.legacy_ws is not None
+            else None
+        )
+
+        endpoints.append(
+            WorkerEndpoint(
+                id=w.id,
+                region=w.region,
+                websocket=f"ws://{w.ip}:{w.ports.ws}/ws",
+                http=f"http://{w.ip}:{w.ports.http}",
+                legacy_quic=legacy_quic,
+                legacy_grpc=legacy_grpc,
+                legacy_websocket=legacy_websocket,
+            )
+        )
+    return endpoints
+
+
+# Protocols whose worker endpoint carries both a primary and a legacy variant.
+_LEGACY_CAPABLE_PROTOCOLS = ("websocket", "http", "quic", "grpc")
+
+
+def connect_targets(endpoint: WorkerEndpoint, protocol: str) -> List[str]:
+    """Build the ordered list of connect targets for a worker endpoint and
+    protocol: the primary endpoint first, followed by the legacy endpoint
+    (if the worker advertises one and it differs from the primary).
+
+    Returns ``[primary]`` when there is no legacy endpoint (today's
+    single-attempt behavior, unchanged for old control planes / workers that
+    never had a port migration), or ``[]`` when the worker has no primary
+    endpoint for the protocol at all.
+
+    Supported protocols: ``"websocket"``, ``"http"``, ``"quic"``, ``"grpc"``.
+    Note ``WorkerEndpoint`` only carries primary endpoints for
+    ``"websocket"`` and ``"http"`` today, so ``"quic"``/``"grpc"`` always
+    resolve to an empty list (no primary endpoint) even though their legacy
+    fields are parsed for forward-compatibility.
+    """
+    if protocol not in _LEGACY_CAPABLE_PROTOCOLS:
+        raise ValueError(f"Unknown protocol: {protocol}")
+
+    if protocol == "websocket":
+        primary, legacy = endpoint.websocket, endpoint.legacy_websocket
+    elif protocol == "http":
+        primary, legacy = endpoint.http, None
+    elif protocol == "quic":
+        primary, legacy = None, endpoint.legacy_quic
+    else:  # grpc
+        primary, legacy = None, endpoint.legacy_grpc
+
+    if not primary:
+        return []
+    if not legacy or legacy == primary:
+        return [primary]
+    return [primary, legacy]
 
 
 def best_region(

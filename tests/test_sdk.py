@@ -1,9 +1,14 @@
 """Tests for the Slipstream Python SDK."""
 
+import asyncio
+
 import pytest
 
+from slipstream.client import SlipstreamClient
 from slipstream.config import ConfigBuilder, config_builder, get_http_endpoint, get_ws_endpoint
+from slipstream.discovery import connect_targets, parse_discovery_response, workers_to_endpoints
 from slipstream.errors import SlipstreamError
+from slipstream.http_transport import _is_connect_failure, _try_targets
 from slipstream.types import (
     BackoffStrategy,
     BillingTier,
@@ -36,6 +41,7 @@ from slipstream.types import (
     TransactionStatus,
     WebhookEvent,
     WebhookNotificationLevel,
+    WorkerEndpoint,
 )
 
 
@@ -493,3 +499,215 @@ class TestTypeStructures:
         assert config.min_confidence == 70
         assert config.webhook_events == ["transaction.confirmed"]
         assert config.webhook_notification_level == "final"
+
+
+# ============================================================================
+# Legacy-port fallback: discovery parsing
+# ============================================================================
+
+
+def _discovery_payload(with_legacy: bool) -> dict:
+    ports = {
+        "quic": 4433,
+        "ws": 9000,
+        "http": 9000,
+        "grpc": 10000,
+    }
+    if with_legacy:
+        ports.update(
+            {
+                "legacy_quic": 4433,
+                "legacy_grpc": 20000,
+                "legacy_ws": 9001,
+            }
+        )
+    return {
+        "regions": [{"id": "us-east", "name": "US East"}],
+        "workers": [
+            {
+                "id": "worker-1",
+                "region": "us-east",
+                "ip": "10.0.0.1",
+                "ports": ports,
+                "healthy": True,
+                "version": "1.2.3",
+            }
+        ],
+        "recommended_region": "us-east",
+    }
+
+
+class TestDiscoveryLegacyPorts:
+    def test_discover_parses_legacy_ports(self):
+        response = parse_discovery_response(_discovery_payload(with_legacy=True))
+        worker = response.workers[0]
+
+        assert worker.ports.grpc == 10000
+        assert worker.ports.legacy_quic == 4433
+        assert worker.ports.legacy_grpc == 20000
+        assert worker.ports.legacy_ws == 9001
+
+        endpoints = workers_to_endpoints(response.workers)
+        assert len(endpoints) == 1
+        endpoint = endpoints[0]
+        assert endpoint.legacy_quic == "quic://10.0.0.1:4433"
+        assert endpoint.legacy_grpc == "http://10.0.0.1:20000"
+        assert endpoint.legacy_websocket == "ws://10.0.0.1:9001/ws"
+
+    def test_discover_old_cp_without_legacy(self):
+        response = parse_discovery_response(_discovery_payload(with_legacy=False))
+        worker = response.workers[0]
+
+        # Old control plane omits legacy_* keys entirely -> all None, not a
+        # default port.
+        assert worker.ports.legacy_quic is None
+        assert worker.ports.legacy_grpc is None
+        assert worker.ports.legacy_ws is None
+        assert worker.ports.grpc == 10000  # new field still gets its default
+
+        endpoints = workers_to_endpoints(response.workers)
+        assert len(endpoints) == 1
+        endpoint = endpoints[0]
+        assert endpoint.legacy_quic is None
+        assert endpoint.legacy_grpc is None
+        assert endpoint.legacy_websocket is None
+        # Endpoints still build normally for old control planes.
+        assert endpoint.websocket == "ws://10.0.0.1:9000/ws"
+        assert endpoint.http == "http://10.0.0.1:9000"
+
+
+# ============================================================================
+# Legacy-port fallback: connect_targets
+# ============================================================================
+
+
+class TestConnectTargets:
+    def test_connect_targets_order_with_legacy(self):
+        endpoint = WorkerEndpoint(
+            id="worker-1",
+            region="us-east",
+            websocket="ws://10.0.0.1:9000/ws",
+            http="http://10.0.0.1:9000",
+            legacy_websocket="ws://10.0.0.1:9001/ws",
+        )
+        assert connect_targets(endpoint, "websocket") == [
+            "ws://10.0.0.1:9000/ws",
+            "ws://10.0.0.1:9001/ws",
+        ]
+
+    def test_connect_targets_single_when_no_legacy(self):
+        endpoint = WorkerEndpoint(
+            id="worker-1",
+            region="us-east",
+            websocket="ws://10.0.0.1:9000/ws",
+            http="http://10.0.0.1:9000",
+        )
+        assert connect_targets(endpoint, "websocket") == ["ws://10.0.0.1:9000/ws"]
+        # No legacy_http field is carried at all -> always single-target.
+        assert connect_targets(endpoint, "http") == ["http://10.0.0.1:9000"]
+
+    def test_connect_targets_dedup_when_equal(self):
+        endpoint = WorkerEndpoint(
+            id="worker-1",
+            region="us-east",
+            websocket="ws://10.0.0.1:9000/ws",
+            http="http://10.0.0.1:9000",
+            legacy_websocket="ws://10.0.0.1:9000/ws",  # same as primary
+        )
+        assert connect_targets(endpoint, "websocket") == ["ws://10.0.0.1:9000/ws"]
+
+    def test_connect_targets_no_primary_returns_empty(self):
+        endpoint = WorkerEndpoint(id="worker-1", region="us-east")
+        assert connect_targets(endpoint, "websocket") == []
+        assert connect_targets(endpoint, "http") == []
+
+
+# ============================================================================
+# Legacy-port fallback: _try_targets
+# ============================================================================
+
+
+class TestTryTargets:
+    def test_try_targets_prefers_primary(self):
+        calls = []
+
+        async def attempt(target: str) -> str:
+            calls.append(target)
+            return f"ok:{target}"
+
+        result = asyncio.run(_try_targets(["primary", "legacy"], attempt))
+
+        assert result == "ok:primary"
+        assert calls == ["primary"]  # legacy never attempted after success
+
+    def test_try_targets_falls_back(self):
+        calls = []
+
+        async def attempt(target: str) -> str:
+            calls.append(target)
+            if target == "primary":
+                raise SlipstreamError.connection("connection refused")
+            return f"ok:{target}"
+
+        result = asyncio.run(_try_targets(["primary", "legacy"], attempt))
+
+        assert result == "ok:legacy"
+        assert calls == ["primary", "legacy"]  # fallback attempted only after primary failed
+
+    def test_try_targets_no_fallback_on_application_error(self):
+        calls = []
+
+        async def attempt(target: str) -> str:
+            calls.append(target)
+            raise SlipstreamError.auth("invalid api key")
+
+        with pytest.raises(SlipstreamError) as exc_info:
+            asyncio.run(_try_targets(["primary", "legacy"], attempt))
+
+        assert exc_info.value.code == "AUTH"
+        assert calls == ["primary"]  # legacy never attempted for an app-level error
+
+    def test_try_targets_single_target_unchanged_behavior(self):
+        calls = []
+
+        async def attempt(target: str) -> str:
+            calls.append(target)
+            return "ok"
+
+        result = asyncio.run(_try_targets(["primary"], attempt))
+
+        assert result == "ok"
+        assert calls == ["primary"]
+
+    def test_try_targets_last_target_failure_propagates(self):
+        async def attempt(target: str) -> str:
+            raise SlipstreamError.connection(f"failed:{target}")
+
+        with pytest.raises(SlipstreamError) as exc_info:
+            asyncio.run(_try_targets(["primary", "legacy"], attempt))
+
+        assert "legacy" in str(exc_info.value)
+
+    def test_is_connect_failure_classification(self):
+        assert _is_connect_failure(SlipstreamError.connection("x")) is True
+        assert _is_connect_failure(SlipstreamError.timeout(1000)) is True
+        assert _is_connect_failure(SlipstreamError.auth("x")) is False
+        assert _is_connect_failure(SlipstreamError.rate_limited()) is False
+        assert _is_connect_failure(ValueError("not a slipstream error")) is False
+
+
+# ============================================================================
+# Bundle submission regression
+# ============================================================================
+
+
+class TestSubmitBundleGuard:
+    def test_submit_bundle_too_few_raises(self):
+        client = SlipstreamClient(config_builder().api_key("sk_test_123").build())
+        with pytest.raises(ValueError, match="2-5 transactions"):
+            asyncio.run(client.submit_bundle([b"only-one-tx"]))
+
+    def test_submit_bundle_too_many_raises(self):
+        client = SlipstreamClient(config_builder().api_key("sk_test_123").build())
+        with pytest.raises(ValueError, match="2-5 transactions"):
+            asyncio.run(client.submit_bundle([b"tx"] * 6))

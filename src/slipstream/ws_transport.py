@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 import aiohttp
 
 from .errors import SlipstreamError
+from .http_transport import _try_targets
 from .types import (
     AlternativeSender,
     ConnectionInfo,
@@ -43,7 +44,13 @@ Callback = Callable[..., Any]
 
 
 class WebSocketTransport:
-    """WebSocket transport with auto-reconnect and streaming subscriptions."""
+    """WebSocket transport with auto-reconnect and streaming subscriptions.
+
+    Prefers ``url``; falls back ONCE to ``legacy_url`` (if given) when the
+    primary connect attempt fails with a connect/transport error. A
+    successful connect against the primary URL never attempts the legacy
+    URL. No legacy URL ⇒ single attempt, unchanged behavior.
+    """
 
     def __init__(
         self,
@@ -52,8 +59,10 @@ class WebSocketTransport:
         region: Optional[str] = None,
         tier: str = "pro",
         keep_alive_interval: float = 5.0,
+        legacy_url: Optional[str] = None,
     ) -> None:
         self._url = url
+        self._legacy_url = legacy_url
         self._api_key = api_key
         self._region = region
         self._tier = tier
@@ -96,11 +105,26 @@ class WebSocketTransport:
                 logger.exception("Error in event listener for %s", event)
 
     async def connect(self) -> ConnectionInfo:
-        """Connect to the WebSocket server."""
+        """Connect to the WebSocket server.
+
+        Tries the primary URL first; falls back exactly once to the legacy
+        URL (if one was configured and differs from the primary) when the
+        primary attempt fails with a connect/transport error. Never falls
+        back on an application-level error (e.g. an auth rejection from the
+        server), since it would fail identically against the legacy URL.
+        """
+        if self._legacy_url and self._legacy_url != self._url:
+            targets = [self._url, self._legacy_url]
+        else:
+            targets = [self._url]
+
+        return await _try_targets(targets, self._connect_to_url)
+
+    async def _connect_to_url(self, url: str) -> ConnectionInfo:
         self._session = aiohttp.ClientSession()
 
         try:
-            self._ws = await self._session.ws_connect(self._url)
+            self._ws = await self._session.ws_connect(url)
         except Exception as e:
             await self._session.close()
             raise SlipstreamError.connection(
@@ -131,12 +155,24 @@ class WebSocketTransport:
             raise SlipstreamError.connection("Unexpected WebSocket message type")
 
         data = json.loads(msg.data)
-        if data.get("type") != "connected":
+        msg_type = data.get("type")
+
+        if msg_type == "error":
+            # Application/auth rejection from the server — never retryable
+            # against a legacy URL, since the same credentials would be
+            # rejected there too.
             await self._cleanup()
-            raise SlipstreamError.connection(
-                f"Expected 'connected', got '{data.get('type')}'"
+            raise SlipstreamError.auth(
+                data.get("message") or "Connection rejected by server"
             )
 
+        if msg_type != "connected":
+            await self._cleanup()
+            raise SlipstreamError.connection(
+                f"Expected 'connected', got '{msg_type}'"
+            )
+
+        self._url = url  # remember which target succeeded, for reconnects
         self._connected = True
         self._reconnect_attempts = 0
 

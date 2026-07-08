@@ -116,6 +116,12 @@ class WorkerEndpoint:
     region: str
     websocket: Optional[str] = None
     http: Optional[str] = None
+    legacy_quic: Optional[str] = None
+    """Legacy QUIC endpoint advertised during a port migration; absent on old control planes."""
+    legacy_grpc: Optional[str] = None
+    """Legacy gRPC endpoint advertised during a port migration; absent on old control planes."""
+    legacy_websocket: Optional[str] = None
+    """Legacy WebSocket endpoint advertised during a port migration; absent on old control planes."""
 
 
 # =============================================================================
@@ -415,6 +421,13 @@ class DiscoveryWorkerPorts:
     quic: int = 4433
     ws: int = 9000
     http: int = 9000
+    grpc: int = 10000
+    legacy_quic: Optional[int] = None
+    """Legacy QUIC port advertised during a port migration; absent on old control planes."""
+    legacy_grpc: Optional[int] = None
+    """Legacy gRPC port advertised during a port migration; absent on old control planes."""
+    legacy_ws: Optional[int] = None
+    """Legacy WebSocket port advertised during a port migration; absent on old control planes."""
 
 
 @dataclass
