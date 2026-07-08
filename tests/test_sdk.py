@@ -711,3 +711,122 @@ class TestSubmitBundleGuard:
         client = SlipstreamClient(config_builder().api_key("sk_test_123").build())
         with pytest.raises(ValueError, match="2-5 transactions"):
             asyncio.run(client.submit_bundle([b"tx"] * 6))
+
+
+# ============================================================================
+# End-to-end wiring: client forwards legacy WS endpoint into the transport
+# ============================================================================
+
+
+class _SpyWebSocketTransport:
+    """Records the ``legacy_url`` the client hands the WS transport.
+
+    ``connect`` raises so the client falls through to HTTP-only mode without
+    opening a real socket. Mirrors the real transport surface the client uses.
+    """
+
+    instances: "list[_SpyWebSocketTransport]" = []
+
+    def __init__(self, url, api_key, region=None, tier="pro", legacy_url=None):
+        self.url = url
+        self.legacy_url = legacy_url
+        self._connected = False
+        type(self).instances.append(self)
+
+    def on(self, *_args, **_kwargs):
+        pass
+
+    async def connect(self):
+        raise SlipstreamError.connection("spy ws unreachable")
+
+    async def disconnect(self):
+        pass
+
+    def is_connected(self):
+        return False
+
+
+class _SpyHttpTransport:
+    """Stub HTTP transport so connect() does no real network I/O."""
+
+    def __init__(self, *_args, **_kwargs):
+        pass
+
+    async def get_tip_instructions(self):
+        return []
+
+    async def close(self):
+        pass
+
+
+class _SpyWorkerSelector:
+    """No-op selector so discovery ranking does no real latency probing."""
+
+    def __init__(self, endpoints):
+        self._endpoints = endpoints
+
+    async def measure_all(self):
+        return {}
+
+
+class TestClientForwardsLegacyEndpoint:
+    """The client MUST pass the discovery-computed legacy WS endpoint into the
+    WebSocketTransport it constructs. Fails against the unwired code where the
+    connect path dropped ``worker.legacy_websocket``.
+    """
+
+    def _patch(self, monkeypatch, payload):
+        import slipstream.client as client_mod
+
+        _SpyWebSocketTransport.instances.clear()
+        monkeypatch.setattr(client_mod, "WebSocketTransport", _SpyWebSocketTransport)
+        monkeypatch.setattr(client_mod, "HttpTransport", _SpyHttpTransport)
+        monkeypatch.setattr(client_mod, "WorkerSelector", _SpyWorkerSelector)
+
+        async def fake_discover(_url):
+            return parse_discovery_response(payload)
+
+        monkeypatch.setattr(client_mod, "discover", fake_discover)
+
+    def test_discovery_worker_with_legacy_ws_forwards_legacy_url(self, monkeypatch):
+        self._patch(monkeypatch, _discovery_payload(with_legacy=True))
+
+        config = config_builder().api_key("sk_test_123").region("us-east").build()
+        client = asyncio.run(SlipstreamClient.connect(config))
+        asyncio.run(client.disconnect())
+
+        legacy_urls = [ws.legacy_url for ws in _SpyWebSocketTransport.instances]
+        # legacy_ws=9001 in the payload -> ws://10.0.0.1:9001/ws
+        assert "ws://10.0.0.1:9001/ws" in legacy_urls
+
+    def test_discovery_worker_without_legacy_ws_leaves_legacy_none(self, monkeypatch):
+        self._patch(monkeypatch, _discovery_payload(with_legacy=False))
+
+        config = config_builder().api_key("sk_test_123").region("us-east").build()
+        client = asyncio.run(SlipstreamClient.connect(config))
+        asyncio.run(client.disconnect())
+
+        assert _SpyWebSocketTransport.instances  # transport was constructed
+        # No legacy port advertised -> single-attempt behavior, unchanged.
+        for ws in _SpyWebSocketTransport.instances:
+            assert ws.legacy_url is None
+
+    def test_explicit_endpoint_leaves_legacy_none(self, monkeypatch):
+        import slipstream.client as client_mod
+
+        _SpyWebSocketTransport.instances.clear()
+        monkeypatch.setattr(client_mod, "WebSocketTransport", _SpyWebSocketTransport)
+        monkeypatch.setattr(client_mod, "HttpTransport", _SpyHttpTransport)
+
+        config = (
+            config_builder()
+            .api_key("sk_test_123")
+            .endpoint("http://127.0.0.1:1")
+            .build()
+        )
+        client = asyncio.run(SlipstreamClient.connect(config))
+        asyncio.run(client.disconnect())
+
+        assert _SpyWebSocketTransport.instances
+        for ws in _SpyWebSocketTransport.instances:
+            assert ws.legacy_url is None

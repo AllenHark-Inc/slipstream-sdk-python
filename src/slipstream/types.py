@@ -53,6 +53,12 @@ class SlipstreamConfig:
     region: Optional[str] = None
     endpoint: Optional[str] = None
     ws_endpoint: Optional[str] = None
+    #: Legacy WebSocket endpoint advertised by the worker during a port
+    #: migration (set by discovery from ``WorkerEndpoint.legacy_websocket``).
+    #: When present, the WebSocket transport falls back to it ONCE if the
+    #: primary connect fails. ``None`` on old control planes / explicit-endpoint
+    #: mode ⇒ single-attempt connect, unchanged behavior.
+    ws_legacy_endpoint: Optional[str] = None
     discovery_url: str = "https://discovery.allenhark.network"
     tier: BillingTier = BillingTier.PRO
     connection_timeout: int = 10_000

@@ -144,6 +144,7 @@ class SlipstreamClient:
             config.api_key,
             config.region,
             config.tier.value if hasattr(config.tier, 'value') else str(config.tier),
+            legacy_url=config.ws_legacy_endpoint,
         )
         self._connection_info: Optional[ConnectionInfo] = None
         self._connected = False
@@ -264,6 +265,10 @@ class SlipstreamClient:
                     region=region,
                     endpoint=worker.http,
                     ws_endpoint=worker.websocket,
+                    # Thread the discovery-advertised legacy WS endpoint so the
+                    # WS transport can fall back to it once on connect failure.
+                    # None when the worker advertises no legacy port ⇒ unchanged.
+                    ws_legacy_endpoint=worker.legacy_websocket,
                     discovery_url=config.discovery_url,
                     tier=config.tier,
                     connection_timeout=config.connection_timeout,
